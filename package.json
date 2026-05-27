@@ -8,9 +8,17 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abslabs-io/claude-todos.git"
+  },
   "main": "./out/extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -57,11 +65,13 @@
   "scripts": {
     "build": "tsc -p .",
     "watch": "tsc -p . -w",
+    "package": "vsce package",
     "vscode:prepublish": "tsc -p ."
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.1",
     "typescript": "^5.4.0"
   }
 }
