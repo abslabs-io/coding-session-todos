@@ -1,0 +1,77 @@
+{
+  "name": "claude-todos",
+  "displayName": "Claude Todos",
+  "description": "Live sidebar view of Claude Code session todos for the current workspace.",
+  "version": "0.0.9",
+  "publisher": "local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claudeTodos",
+          "title": "Claude Todos",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "claudeTodos": [
+        {
+          "id": "claudeTodos.list",
+          "name": "Todos",
+          "type": "tree"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "claudeTodos.list",
+        "contents": "No active Claude sessions found.\n\nSessions are shown if they're for this workspace or were touched in the last 30 minutes.",
+        "when": "claudeTodos.state == noSessions"
+      }
+    ],
+    "commands": [
+      {
+        "command": "claudeTodos.refresh",
+        "title": "Refresh Claude Todos",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeTodos.openTranscript",
+        "title": "Open Current Transcript",
+        "icon": "$(go-to-file)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudeTodos.refresh",
+          "when": "view == claudeTodos.list",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeTodos.openTranscript",
+          "when": "view == claudeTodos.list",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . -w",
+    "vscode:prepublish": "tsc -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
