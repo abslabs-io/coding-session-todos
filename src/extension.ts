@@ -43,7 +43,7 @@ export function activate(context: vscode.ExtensionContext): void {
 export function deactivate(): void {}
 
 type ViewState = "noSessions" | "ready";
-type TreeNode = SessionNode | TodoNode;
+type TreeNode = SessionNode | InfoNode | TodoNode;
 
 interface SessionEntry {
   session: ActiveSession;
@@ -237,7 +237,11 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     }
     if (node instanceof SessionNode) {
       const file = node.entry.session.sessionFile;
-      return (node.entry.snapshot?.todos ?? []).map((t, i) => new TodoNode(t, file, i));
+      const todos = node.entry.snapshot?.todos ?? [];
+      return [
+        new InfoNode(node.entry),
+        ...todos.map((t, i) => new TodoNode(t, file, i)),
+      ];
     }
     return [];
   }
@@ -277,28 +281,38 @@ class SessionNode {
   constructor(public readonly entry: SessionEntry) {}
 
   toTreeItem(currentCwd: string | null): vscode.TreeItem {
-    const todos = this.entry.snapshot?.todos ?? [];
     const isCurrent = this.entry.session.cwd === currentCwd;
     const folder = path.basename(this.entry.session.cwd) || this.entry.session.cwd;
     const labelText = this.entry.title ?? folder;
-    // VSCode TreeItem labels can't be styled bold via public API, but a
-    // full-label highlight renders in the search-match color, which reads
-    // as visibly more prominent than the default label color.
-    const label: vscode.TreeItemLabel = {
-      label: labelText,
-      highlights: labelText.length > 0 ? [[0, labelText.length]] : [],
-    };
-    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Expanded);
+    const item = new vscode.TreeItem(labelText, vscode.TreeItemCollapsibleState.Expanded);
     item.id = `session:${this.entry.session.sessionFile}`;
-    const sid = path.basename(this.entry.session.sessionFile, ".jsonl").slice(0, 8);
-    const ago = relativeTime(this.entry.snapshot?.timestamp ?? "") || timeAgoMs(Date.now() - this.entry.session.mtimeMs);
-    const status = todos.length > 0
-      ? `${currentPosition(todos).current} / ${currentPosition(todos).total}`
-      : "no todos";
-    item.description = `${folder} · ${sid} · ${status} · ${ago}`;
     item.tooltip = `${this.entry.title ?? "(no title)"}\n${this.entry.session.cwd}\n${path.basename(this.entry.session.sessionFile, ".jsonl")}\nstate: ${this.entry.state.state}${this.entry.state.pendingTool ? ` (${this.entry.state.pendingTool})` : ""}`;
     item.iconPath = sessionIconFor(this.entry.state);
     item.contextValue = isCurrent ? "session.current" : "session.other";
+    return item;
+  }
+}
+
+class InfoNode {
+  constructor(public readonly entry: SessionEntry) {}
+
+  toTreeItem(_currentCwd: string | null): vscode.TreeItem {
+    const todos = this.entry.snapshot?.todos ?? [];
+    const folder = path.basename(this.entry.session.cwd) || this.entry.session.cwd;
+    const ago =
+      relativeTime(this.entry.snapshot?.timestamp ?? "") ||
+      timeAgoMs(Date.now() - this.entry.session.mtimeMs);
+    const status = todos.length > 0
+      ? `${currentPosition(todos).current} / ${currentPosition(todos).total}`
+      : "no todos";
+    const meta = `${folder} · ${status} · ${ago}`;
+    // Empty label + meta in description renders in the dim description
+    // color, reading as a caption under the title rather than a sibling row.
+    const item = new vscode.TreeItem(" ", vscode.TreeItemCollapsibleState.None);
+    item.id = `info:${this.entry.session.sessionFile}`;
+    item.description = meta;
+    item.tooltip = `${this.entry.session.cwd}\n${status} · ${ago}`;
+    item.contextValue = "session.info";
     return item;
   }
 }

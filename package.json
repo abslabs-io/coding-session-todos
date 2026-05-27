@@ -2,7 +2,7 @@
   "name": "claude-todos",
   "displayName": "Claude Todos",
   "description": "Live sidebar view of Claude Code session todos for the current workspace.",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "publisher": "local",
   "private": true,
   "engines": {
