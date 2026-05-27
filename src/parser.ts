@@ -77,6 +77,92 @@ export function findLatestTitle(text: string): string | null {
   return null;
 }
 
+export type SessionState = "active" | "waiting" | "idle";
+
+export interface SessionStateInfo {
+  state: SessionState;
+  pendingTool?: string;
+}
+
+// Tool calls expected to block long enough that the spinner shouldn't flip
+// to a "stale, probably needs you" warning. Anything else, if it's been
+// sitting unresolved past the active window, is treated as waiting (the
+// most common cause being a pending permission prompt the harness doesn't
+// echo into the transcript).
+const LONG_RUNNING_TOOLS = new Set(["Agent", "Task", "Bash"]);
+
+interface AssistantContentItem {
+  type?: string;
+  name?: string;
+  id?: string;
+  tool_use_id?: string;
+}
+
+// Walks a transcript tail backwards to figure out what the session is doing
+// right now. We can't see permission prompts directly — Claude Code resolves
+// those out-of-band — so any unresolved tool_use that's been sitting past
+// the active window is treated as "waiting on the user".
+export function findSessionState(text: string, mtimeMs: number, nowMs: number = Date.now()): SessionStateInfo {
+  const lines = text.split("\n");
+  const resolvedIds = new Set<string>();
+  const pendingToolUses: { id: string; name: string }[] = [];
+  let sawAssistant = false;
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line) continue;
+    let parsed: { type?: string; message?: { role?: string; content?: unknown } };
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const role = parsed.message?.role;
+    const content = parsed.message?.content;
+    if (!Array.isArray(content)) continue;
+
+    if (!sawAssistant && (parsed.type === "user" || role === "user")) {
+      for (const item of content as AssistantContentItem[]) {
+        if (item?.type === "tool_result" && typeof item.tool_use_id === "string") {
+          resolvedIds.add(item.tool_use_id);
+        }
+      }
+      continue;
+    }
+
+    if (parsed.type === "assistant" || role === "assistant") {
+      sawAssistant = true;
+      for (const item of content as AssistantContentItem[]) {
+        if (item?.type === "tool_use" && typeof item.id === "string") {
+          pendingToolUses.push({ id: item.id, name: item.name ?? "" });
+        }
+      }
+      break;
+    }
+  }
+
+  const ageMs = nowMs - mtimeMs;
+  const ACTIVE_WINDOW_MS = 5_000;
+  const unresolved = pendingToolUses.filter((t) => !resolvedIds.has(t.id));
+
+  if (unresolved.length > 0) {
+    const latest = unresolved[unresolved.length - 1];
+    if (latest.name === "AskUserQuestion") {
+      return { state: "waiting", pendingTool: latest.name };
+    }
+    if (ageMs < ACTIVE_WINDOW_MS) {
+      return { state: "active", pendingTool: latest.name };
+    }
+    if (LONG_RUNNING_TOOLS.has(latest.name)) {
+      return { state: "active", pendingTool: latest.name };
+    }
+    return { state: "waiting", pendingTool: latest.name };
+  }
+
+  if (ageMs < ACTIVE_WINDOW_MS) return { state: "active" };
+  return { state: "idle" };
+}
+
 function isValidTodo(t: unknown): t is Todo {
   if (!t || typeof t !== "object") return false;
   const r = t as Record<string, unknown>;

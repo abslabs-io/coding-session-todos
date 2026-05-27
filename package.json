@@ -42,11 +42,6 @@
         "command": "claudeTodos.refresh",
         "title": "Refresh Claude Todos",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "claudeTodos.openTranscript",
-        "title": "Open Current Transcript",
-        "icon": "$(go-to-file)"
       }
     ],
     "menus": {
@@ -55,11 +50,6 @@
           "command": "claudeTodos.refresh",
           "when": "view == claudeTodos.list",
           "group": "navigation@1"
-        },
-        {
-          "command": "claudeTodos.openTranscript",
-          "when": "view == claudeTodos.list",
-          "group": "navigation@2"
         }
       ]
     }

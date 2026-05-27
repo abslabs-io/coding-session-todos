@@ -2,11 +2,23 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
-import { findLatestTitle, findLatestTodos, Todo, TodoStatus, TodosSnapshot } from "./parser";
+import {
+  findLatestTitle,
+  findLatestTodos,
+  findSessionState,
+  SessionStateInfo,
+  Todo,
+  TodoStatus,
+  TodosSnapshot,
+} from "./parser";
 import { ActiveSession, findActiveSessions, readTail } from "./sessionFinder";
 
 const ACTIVE_WINDOW_MS = 30 * 60 * 1000;
 const REFRESH_THROTTLE_MS = 5_000;
+// While a session is in the "active" state we re-render shortly after the
+// state-detection active window expires so the spinner can flip to check
+// or warning even when nothing else is writing to the transcript.
+const STATE_TICK_MS = 6_000;
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new TodosProvider();
@@ -19,15 +31,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("claudeTodos.refresh", () => provider.refresh()),
-    vscode.commands.registerCommand("claudeTodos.openTranscript", async () => {
-      const file = provider.currentSessionFile();
-      if (!file) {
-        vscode.window.showInformationMessage("No Claude transcript found for this workspace yet.");
-        return;
-      }
-      const doc = await vscode.workspace.openTextDocument(file);
-      await vscode.window.showTextDocument(doc, { preview: true });
-    }),
   );
 
   context.subscriptions.push(
@@ -46,6 +49,7 @@ interface SessionEntry {
   session: ActiveSession;
   snapshot: TodosSnapshot | null;
   title: string | null;
+  state: SessionStateInfo;
 }
 
 class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
@@ -58,6 +62,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
   private fileWatchers: Map<string, fs.FSWatcher> = new Map();
   private refreshTimers: Map<string, NodeJS.Timeout> = new Map();
   private lastRefreshAt: Map<string, number> = new Map();
+  private stateTickTimers: Map<string, NodeJS.Timeout> = new Map();
 
   attachView(view: vscode.TreeView<TreeNode>): void {
     this.view = view;
@@ -74,21 +79,17 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     await this.rescan();
   }
 
-  currentSessionFile(): string | null {
-    if (!this.currentCwd) return null;
-    return this.entries.find((e) => e.session.cwd === this.currentCwd)?.session.sessionFile ?? null;
-  }
-
   private async rescan(): Promise<void> {
     const sessions = await findActiveSessions(ACTIVE_WINDOW_MS);
     const entries: SessionEntry[] = [];
     for (const session of sessions) {
-      const { snapshot, title } = await loadEntry(session.sessionFile);
-      entries.push({ session, snapshot, title });
+      const { snapshot, title, state } = await loadEntry(session.sessionFile, session.mtimeMs);
+      entries.push({ session, snapshot, title, state });
     }
     const changed = !sameEntries(this.entries, entries);
     this.entries = entries;
     this.syncFileWatchers();
+    this.syncStateTickers();
     if (changed) {
       this.updateChrome();
       this._onDidChange.fire(undefined);
@@ -141,22 +142,52 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     const idx = this.entries.findIndex((e) => e.session.sessionFile === file);
     if (idx === -1) return;
     const prev = this.entries[idx];
-    const { snapshot, title } = await loadEntry(file);
-    const changed = !sameTodos(prev.snapshot?.todos, snapshot?.todos) || prev.title !== title;
+    let mtimeMs = prev.session.mtimeMs;
     try {
       const stat = await fs.promises.stat(file);
-      this.entries[idx] = {
-        session: { ...prev.session, mtimeMs: stat.mtimeMs },
-        snapshot,
-        title,
-      };
+      mtimeMs = stat.mtimeMs;
     } catch {
-      this.entries[idx] = { ...prev, snapshot, title };
+      // keep previous mtime
     }
+    const { snapshot, title, state } = await loadEntry(file, mtimeMs);
+    const changed =
+      !sameTodos(prev.snapshot?.todos, snapshot?.todos) ||
+      prev.title !== title ||
+      !sameState(prev.state, state);
+    this.entries[idx] = {
+      session: { ...prev.session, mtimeMs },
+      snapshot,
+      title,
+      state,
+    };
     this.entries.sort((a, b) => b.session.mtimeMs - a.session.mtimeMs);
+    this.syncStateTickers();
     if (changed) {
       this.updateChrome();
       this._onDidChange.fire(undefined);
+    }
+  }
+
+  // While any session is showing the spinner, schedule a one-shot re-render
+  // shortly after the active window expires so the icon can flip to check or
+  // warning even when nothing else is writing to the transcript.
+  private syncStateTickers(): void {
+    const live = new Set(this.entries.map((e) => e.session.sessionFile));
+    for (const [file, timer] of this.stateTickTimers) {
+      if (!live.has(file)) {
+        clearTimeout(timer);
+        this.stateTickTimers.delete(file);
+      }
+    }
+    for (const entry of this.entries) {
+      const file = entry.session.sessionFile;
+      if (this.stateTickTimers.has(file)) continue;
+      if (entry.state.state !== "active") continue;
+      const timer = setTimeout(() => {
+        this.stateTickTimers.delete(file);
+        void this.reloadOne(file);
+      }, STATE_TICK_MS);
+      this.stateTickTimers.set(file, timer);
     }
   }
 
@@ -216,11 +247,16 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     this.fileWatchers.clear();
     for (const t of this.refreshTimers.values()) clearTimeout(t);
     this.refreshTimers.clear();
+    for (const t of this.stateTickTimers.values()) clearTimeout(t);
+    this.stateTickTimers.clear();
     this.lastRefreshAt.clear();
   }
 }
 
-async function loadEntry(file: string): Promise<{ snapshot: TodosSnapshot | null; title: string | null }> {
+async function loadEntry(
+  file: string,
+  mtimeMs: number,
+): Promise<{ snapshot: TodosSnapshot | null; title: string | null; state: SessionStateInfo }> {
   try {
     let text = await readTail(file);
     let snap = findLatestTodos(text);
@@ -230,9 +266,10 @@ async function loadEntry(file: string): Promise<{ snapshot: TodosSnapshot | null
       snap = snap ?? findLatestTodos(text);
       title = title ?? findLatestTitle(text);
     }
-    return { snapshot: snap, title };
+    const state = findSessionState(text, mtimeMs);
+    return { snapshot: snap, title, state };
   } catch {
-    return { snapshot: null, title: null };
+    return { snapshot: null, title: null, state: { state: "idle" } };
   }
 }
 
@@ -243,11 +280,15 @@ class SessionNode {
     const todos = this.entry.snapshot?.todos ?? [];
     const isCurrent = this.entry.session.cwd === currentCwd;
     const folder = path.basename(this.entry.session.cwd) || this.entry.session.cwd;
-    const label = this.entry.title ?? folder;
-    const collapsibleState = isCurrent
-      ? vscode.TreeItemCollapsibleState.Expanded
-      : vscode.TreeItemCollapsibleState.Collapsed;
-    const item = new vscode.TreeItem(label, collapsibleState);
+    const labelText = this.entry.title ?? folder;
+    // VSCode TreeItem labels can't be styled bold via public API, but a
+    // full-label highlight renders in the search-match color, which reads
+    // as visibly more prominent than the default label color.
+    const label: vscode.TreeItemLabel = {
+      label: labelText,
+      highlights: labelText.length > 0 ? [[0, labelText.length]] : [],
+    };
+    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Expanded);
     item.id = `session:${this.entry.session.sessionFile}`;
     const sid = path.basename(this.entry.session.sessionFile, ".jsonl").slice(0, 8);
     const ago = relativeTime(this.entry.snapshot?.timestamp ?? "") || timeAgoMs(Date.now() - this.entry.session.mtimeMs);
@@ -255,10 +296,8 @@ class SessionNode {
       ? `${currentPosition(todos).current} / ${currentPosition(todos).total}`
       : "no todos";
     item.description = `${folder} · ${sid} · ${status} · ${ago}`;
-    item.tooltip = `${this.entry.title ?? "(no title)"}\n${this.entry.session.cwd}\n${path.basename(this.entry.session.sessionFile, ".jsonl")}`;
-    item.iconPath = isCurrent
-      ? new vscode.ThemeIcon("folder-active")
-      : new vscode.ThemeIcon("folder");
+    item.tooltip = `${this.entry.title ?? "(no title)"}\n${this.entry.session.cwd}\n${path.basename(this.entry.session.sessionFile, ".jsonl")}\nstate: ${this.entry.state.state}${this.entry.state.pendingTool ? ` (${this.entry.state.pendingTool})` : ""}`;
+    item.iconPath = sessionIconFor(this.entry.state);
     item.contextValue = isCurrent ? "session.current" : "session.other";
     return item;
   }
@@ -291,8 +330,13 @@ function sameEntries(a: SessionEntry[], b: SessionEntry[]): boolean {
     if (a[i].session.sessionFile !== b[i].session.sessionFile) return false;
     if (a[i].title !== b[i].title) return false;
     if (!sameTodos(a[i].snapshot?.todos, b[i].snapshot?.todos)) return false;
+    if (!sameState(a[i].state, b[i].state)) return false;
   }
   return true;
+}
+
+function sameState(a: SessionStateInfo, b: SessionStateInfo): boolean {
+  return a.state === b.state && (a.pendingTool ?? "") === (b.pendingTool ?? "");
 }
 
 function sameTodos(a: Todo[] | undefined, b: Todo[] | undefined): boolean {
@@ -343,5 +387,17 @@ function iconFor(status: TodoStatus): vscode.ThemeIcon {
     case "pending":
     default:
       return new vscode.ThemeIcon("circle-large-outline");
+  }
+}
+
+function sessionIconFor(state: SessionStateInfo): vscode.ThemeIcon {
+  switch (state.state) {
+    case "active":
+      return new vscode.ThemeIcon("loading~spin", new vscode.ThemeColor("charts.blue"));
+    case "waiting":
+      return new vscode.ThemeIcon("warning", new vscode.ThemeColor("list.warningForeground"));
+    case "idle":
+    default:
+      return new vscode.ThemeIcon("check", new vscode.ThemeColor("testing.iconPassed"));
   }
 }
