@@ -15,7 +15,7 @@ VSCode extension. TypeScript 5, `@types/vscode` 1.85, no runtime deps. Renders a
 - `src/sessionFinder.ts` — Locates `~/.claude/projects/<dir>/*.jsonl`, lists every transcript with mtime inside the active window, reads the tail.
 - `src/parser.ts` — Scans JSONL text backwards for the latest `TodoWrite` snapshot, the latest `ai-title`, and computes session state from unresolved `tool_use` ids.
 - `media/icon.svg` — Activity bar icon.
-- `package.json` `contributes` — View container `claudeTodos`, view `claudeTodos.list`, `claudeTodos.refresh` and `claudeTodos.expandAll` commands, the `claudeTodos.activeSessionMinutes` configuration property, and the `viewsWelcome` gated on the `claudeTodos.state` context key.
+- `package.json` `contributes` — View container `claudeTodos`, view `claudeTodos.list`, `claudeTodos.refresh` / `claudeTodos.expandAll` / `claudeTodos.collapseAll` / `claudeTodos.openSettings` commands, the `claudeTodos.activeSessionMinutes` configuration property, and the `viewsWelcome` gated on the `claudeTodos.state` context key.
 
 ## Conventions
 

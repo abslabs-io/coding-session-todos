@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const provider = new TodosProvider();
   const view = vscode.window.createTreeView<TreeNode>("claudeTodos.list", {
     treeDataProvider: provider,
-    showCollapseAll: true,
+    showCollapseAll: false,
   });
   provider.attachView(view);
   context.subscriptions.push(view);
@@ -37,6 +37,18 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("claudeTodos.expandAll", () => provider.expandAll()),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("claudeTodos.collapseAll", () =>
+      vscode.commands.executeCommand("workbench.actions.treeView.claudeTodos.list.collapseAll"),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("claudeTodos.openSettings", () =>
+      vscode.commands.executeCommand("workbench.action.openSettings", "@ext:local.claude-todos"),
+    ),
   );
 
   context.subscriptions.push(
