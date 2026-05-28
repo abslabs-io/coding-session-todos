@@ -358,8 +358,13 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     if (todos.length > 0) {
       const pos = currentPosition(todos);
       nextTitle = `Todos · ${pos.current} / ${pos.total}`;
-      nextBadgeValue = pos.current;
-      nextBadgeTip = `Working on ${pos.current} of ${pos.total}`;
+    }
+    const sessionCount = this.entries.length;
+    if (sessionCount > 0) {
+      nextBadgeValue = sessionCount;
+      nextBadgeTip = sessionCount === 1
+        ? "1 active Claude session"
+        : `${sessionCount} active Claude sessions`;
     }
     if (nextTitle !== this.lastTitle) {
       this.view.title = nextTitle;
