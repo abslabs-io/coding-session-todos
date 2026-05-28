@@ -2,7 +2,7 @@
   "name": "claude-todos",
   "displayName": "Claude Todos",
   "description": "Live sidebar view of Claude Code session todos for the current workspace.",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "publisher": "local",
   "private": true,
   "engines": {
@@ -41,7 +41,7 @@
     "viewsWelcome": [
       {
         "view": "claudeTodos.list",
-        "contents": "No active Claude sessions found.\n\nSessions are shown if they're for this workspace or were touched in the last 30 minutes.",
+        "contents": "No active Claude sessions found.\n\nSessions are shown if they're for this workspace or were touched within the active session window (configurable via `claudeTodos.activeSessionMinutes`, default 30 minutes).",
         "when": "claudeTodos.state == noSessions"
       }
     ],
@@ -50,16 +50,38 @@
         "command": "claudeTodos.refresh",
         "title": "Refresh Claude Todos",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeTodos.expandAll",
+        "title": "Expand All Claude Todos",
+        "icon": "$(expand-all)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "claudeTodos.refresh",
+          "command": "claudeTodos.expandAll",
           "when": "view == claudeTodos.list",
           "group": "navigation@1"
+        },
+        {
+          "command": "claudeTodos.refresh",
+          "when": "view == claudeTodos.list",
+          "group": "navigation@2"
         }
       ]
+    },
+    "configuration": {
+      "title": "Claude Todos",
+      "properties": {
+        "claudeTodos.activeSessionMinutes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 1440,
+          "description": "How recently a Claude session must have been touched (in minutes) to appear in the panel. Default 30, max 1 day."
+        }
+      }
     }
   },
   "scripts": {

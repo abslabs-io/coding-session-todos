@@ -11,10 +11,12 @@ import {
   TodoStatus,
   TodosSnapshot,
 } from "./parser";
-import { ActiveSession, findActiveSessions, readTail } from "./sessionFinder";
+import { ActiveSession, findActiveSessions, projectsRoot, readTail } from "./sessionFinder";
 
-const ACTIVE_WINDOW_MS = 30 * 60 * 1000;
+const DEFAULT_ACTIVE_WINDOW_MIN = 30;
 const REFRESH_THROTTLE_MS = 5_000;
+const RESCAN_DEBOUNCE_MS = 500;
+const SAFETY_POLL_MS = 60_000;
 // While a session is in the "active" state we re-render shortly after the
 // state-detection active window expires so the spinner can flip to check
 // or warning even when nothing else is writing to the transcript.
@@ -34,8 +36,22 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("claudeTodos.expandAll", () => provider.expandAll()),
+  );
+
+  context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => provider.relocate()),
   );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("claudeTodos.activeSessionMinutes")) {
+        void provider.refresh();
+      }
+    }),
+  );
+
+  context.subscriptions.push({ dispose: () => provider.dispose() });
 
   provider.relocate();
 }
@@ -60,18 +76,33 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
   private currentCwd: string | null = null;
   private entries: SessionEntry[] = [];
   private fileWatchers: Map<string, fs.FSWatcher> = new Map();
+  private dirWatchers: Map<string, fs.FSWatcher> = new Map();
+  private rootWatcher: fs.FSWatcher | null = null;
   private refreshTimers: Map<string, NodeJS.Timeout> = new Map();
   private lastRefreshAt: Map<string, number> = new Map();
   private stateTickTimers: Map<string, NodeJS.Timeout> = new Map();
+  private expiryTimers: Map<string, NodeJS.Timeout> = new Map();
+  private rescanDebounce: NodeJS.Timeout | null = null;
+  private safetyPoll: NodeJS.Timeout | null = null;
 
   attachView(view: vscode.TreeView<TreeNode>): void {
     this.view = view;
     this.updateChrome();
   }
 
+  getActiveWindowMs(): number {
+    const raw = vscode.workspace
+      .getConfiguration("claudeTodos")
+      .get<number>("activeSessionMinutes", DEFAULT_ACTIVE_WINDOW_MIN);
+    const minutes = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_ACTIVE_WINDOW_MIN;
+    return minutes * 60_000;
+  }
+
   async relocate(): Promise<void> {
     this.disposeWatchers();
     this.currentCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+    this.ensureRootWatcher();
+    this.ensureSafetyPoll();
     await this.rescan();
   }
 
@@ -79,8 +110,35 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     await this.rescan();
   }
 
+  async expandAll(): Promise<void> {
+    if (!this.view) return;
+    for (const entry of this.entries) {
+      try {
+        await this.view.reveal(new SessionNode(entry), {
+          expand: true,
+          select: false,
+          focus: false,
+        });
+      } catch {
+        // reveal can throw if the node is no longer present; ignore
+      }
+    }
+  }
+
+  dispose(): void {
+    this.disposeWatchers();
+  }
+
+  private scheduleRescan(): void {
+    if (this.rescanDebounce) return;
+    this.rescanDebounce = setTimeout(() => {
+      this.rescanDebounce = null;
+      void this.rescan();
+    }, RESCAN_DEBOUNCE_MS);
+  }
+
   private async rescan(): Promise<void> {
-    const sessions = await findActiveSessions(ACTIVE_WINDOW_MS);
+    const sessions = await findActiveSessions(this.getActiveWindowMs());
     const entries: SessionEntry[] = [];
     for (const session of sessions) {
       const { snapshot, title, state } = await loadEntry(session.sessionFile, session.mtimeMs);
@@ -89,10 +147,73 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     const changed = !sameEntries(this.entries, entries);
     this.entries = entries;
     this.syncFileWatchers();
+    this.syncDirWatchers();
     this.syncStateTickers();
+    this.syncExpiryTimers();
     if (changed) {
       this.updateChrome();
       this._onDidChange.fire(undefined);
+    }
+  }
+
+  private ensureRootWatcher(): void {
+    if (this.rootWatcher) return;
+    try {
+      this.rootWatcher = fs.watch(projectsRoot(), { persistent: false }, () =>
+        this.scheduleRescan(),
+      );
+    } catch {
+      // projects root may not exist yet; the safety poll will retry
+    }
+  }
+
+  private ensureSafetyPoll(): void {
+    if (this.safetyPoll) return;
+    this.safetyPoll = setInterval(() => {
+      if (!this.rootWatcher) this.ensureRootWatcher();
+      this.scheduleRescan();
+    }, SAFETY_POLL_MS);
+  }
+
+  private syncDirWatchers(): void {
+    const live = new Set(this.entries.map((e) => path.dirname(e.session.sessionFile)));
+    for (const [dir, watcher] of this.dirWatchers) {
+      if (!live.has(dir)) {
+        watcher.close();
+        this.dirWatchers.delete(dir);
+      }
+    }
+    for (const dir of live) {
+      if (this.dirWatchers.has(dir)) continue;
+      try {
+        const w = fs.watch(dir, { persistent: false }, () => this.scheduleRescan());
+        this.dirWatchers.set(dir, w);
+      } catch {
+        // ignore; safety poll backstops
+      }
+    }
+  }
+
+  private syncExpiryTimers(): void {
+    const live = new Set(this.entries.map((e) => e.session.sessionFile));
+    for (const [file, timer] of this.expiryTimers) {
+      if (!live.has(file)) {
+        clearTimeout(timer);
+        this.expiryTimers.delete(file);
+      }
+    }
+    const activeWindow = this.getActiveWindowMs();
+    const now = Date.now();
+    for (const entry of this.entries) {
+      const file = entry.session.sessionFile;
+      const existing = this.expiryTimers.get(file);
+      if (existing) clearTimeout(existing);
+      const delay = Math.max(1_000, entry.session.mtimeMs + activeWindow - now + 1_000);
+      const timer = setTimeout(() => {
+        this.expiryTimers.delete(file);
+        this.scheduleRescan();
+      }, delay);
+      this.expiryTimers.set(file, timer);
     }
   }
 
@@ -162,6 +283,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     };
     this.entries.sort((a, b) => b.session.mtimeMs - a.session.mtimeMs);
     this.syncStateTickers();
+    this.syncExpiryTimers();
     if (changed) {
       this.updateChrome();
       this._onDidChange.fire(undefined);
@@ -246,13 +368,36 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     return [];
   }
 
+  getParent(node: TreeNode): TreeNode | undefined {
+    if (node instanceof SessionNode) return undefined;
+    const file = node instanceof InfoNode ? node.entry.session.sessionFile : node.sessionFile;
+    const entry = this.entries.find((e) => e.session.sessionFile === file);
+    return entry ? new SessionNode(entry) : undefined;
+  }
+
   private disposeWatchers(): void {
     for (const w of this.fileWatchers.values()) w.close();
     this.fileWatchers.clear();
+    for (const w of this.dirWatchers.values()) w.close();
+    this.dirWatchers.clear();
+    if (this.rootWatcher) {
+      this.rootWatcher.close();
+      this.rootWatcher = null;
+    }
     for (const t of this.refreshTimers.values()) clearTimeout(t);
     this.refreshTimers.clear();
     for (const t of this.stateTickTimers.values()) clearTimeout(t);
     this.stateTickTimers.clear();
+    for (const t of this.expiryTimers.values()) clearTimeout(t);
+    this.expiryTimers.clear();
+    if (this.rescanDebounce) {
+      clearTimeout(this.rescanDebounce);
+      this.rescanDebounce = null;
+    }
+    if (this.safetyPoll) {
+      clearInterval(this.safetyPoll);
+      this.safetyPoll = null;
+    }
     this.lastRefreshAt.clear();
   }
 }
@@ -320,7 +465,7 @@ class InfoNode {
 class TodoNode {
   constructor(
     private readonly todo: Todo,
-    private readonly sessionFile: string,
+    public readonly sessionFile: string,
     private readonly index: number,
   ) {}
 
