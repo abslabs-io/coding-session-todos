@@ -2,7 +2,7 @@
   "name": "claude-todos",
   "displayName": "Claude Todos",
   "description": "Live sidebar view of Claude Code session todos for the current workspace.",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "publisher": "local",
   "private": true,
   "engines": {
@@ -41,7 +41,7 @@
     "viewsWelcome": [
       {
         "view": "claudeTodos.list",
-        "contents": "No active Claude sessions found.\n\nSessions are shown if they're for this workspace or were touched within the active session window (configurable via `claudeTodos.activeSessionMinutes`, default 30 minutes).",
+        "contents": "No active Claude sessions found.\n\nSessions appear here once Claude Code touches a transcript in this workspace, or within the active session window (configurable via `claudeTodos.activeSessionMinutes`, default 30 minutes).\n\n[Refresh](command:claudeTodos.refresh)\n[Open Settings](command:claudeTodos.openSettings)",
         "when": "claudeTodos.state == noSessions"
       }
     ],

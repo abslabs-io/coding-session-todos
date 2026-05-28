@@ -28,8 +28,14 @@ export function activate(context: vscode.ExtensionContext): void {
     treeDataProvider: provider,
     showCollapseAll: false,
   });
-  provider.attachView(view);
-  context.subscriptions.push(view);
+  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBar.command = "workbench.view.extension.claudeTodos";
+  provider.attachView(view, statusBar);
+  context.subscriptions.push(
+    view,
+    statusBar,
+    vscode.window.registerFileDecorationProvider(new TodoDecorationProvider()),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("claudeTodos.refresh", () => provider.refresh()),
@@ -85,6 +91,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
   readonly onDidChangeTreeData = this._onDidChange.event;
 
   private view: vscode.TreeView<TreeNode> | null = null;
+  private statusBar: vscode.StatusBarItem | null = null;
   private currentCwd: string | null = null;
   private entries: SessionEntry[] = [];
   private fileWatchers: Map<string, fs.FSWatcher> = new Map();
@@ -97,8 +104,9 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
   private rescanDebounce: NodeJS.Timeout | null = null;
   private safetyPoll: NodeJS.Timeout | null = null;
 
-  attachView(view: vscode.TreeView<TreeNode>): void {
+  attachView(view: vscode.TreeView<TreeNode>, statusBar: vscode.StatusBarItem): void {
     this.view = view;
+    this.statusBar = statusBar;
     this.updateChrome();
   }
 
@@ -328,6 +336,10 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
   private lastTitle: string | undefined;
   private lastBadgeValue: number | undefined;
   private lastState: ViewState | undefined;
+  private lastStatusBarText: string | undefined;
+  private lastStatusBarTooltipKey: string | undefined;
+  private lastStatusBarBgId: string | undefined;
+  private lastStatusBarVisible = false;
 
   private updateChrome(): void {
     const state: ViewState = this.entries.length === 0 ? "noSessions" : "ready";
@@ -335,6 +347,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
       void vscode.commands.executeCommand("setContext", "claudeTodos.state", state);
       this.lastState = state;
     }
+    this.updateStatusBar();
     if (!this.view) return;
 
     const current = this.entries.find((e) => e.session.cwd === this.currentCwd);
@@ -359,6 +372,74 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
       this.lastBadgeValue = nextBadgeValue;
     }
     this.view.message = undefined;
+  }
+
+  private updateStatusBar(): void {
+    if (!this.statusBar) return;
+    const current = this.entries.find((e) => e.session.cwd === this.currentCwd);
+    const todos = current?.snapshot?.todos ?? [];
+    const hasTodos = todos.length > 0;
+    const stateName = current?.state.state ?? "idle";
+
+    const hide = !current || (stateName === "idle" && !hasTodos);
+    if (hide) {
+      if (this.lastStatusBarVisible) {
+        this.statusBar.hide();
+        this.lastStatusBarVisible = false;
+      }
+      return;
+    }
+
+    let glyph: string;
+    let bgId: string | undefined;
+    if (stateName === "waiting") {
+      glyph = "$(warning)";
+      bgId = "statusBarItem.warningBackground";
+    } else if (stateName === "active") {
+      glyph = "$(loading~spin)";
+    } else {
+      glyph = "$(checklist)";
+    }
+    const counts = hasTodos
+      ? (() => {
+          const p = currentPosition(todos);
+          return `${p.current}/${p.total}`;
+        })()
+      : "Claude";
+    const text = `${glyph} ${counts}`;
+
+    const now = Date.now();
+    const tooltipLines = this.entries.map((e) => {
+      const t = e.snapshot?.todos ?? [];
+      const ago = relativeTime(e.snapshot?.timestamp ?? "") || timeAgoMs(now - e.session.mtimeMs);
+      const c = t.length > 0
+        ? (() => {
+            const p = currentPosition(t);
+            return `${p.current}/${p.total}`;
+          })()
+        : "no todos";
+      const title = e.title ?? path.basename(e.session.cwd) ?? e.session.cwd;
+      return `- **${escMd(title)}** · ${c} · ${e.state.state} · ${ago}`;
+    });
+    const tooltipText = tooltipLines.join("\n");
+    const tooltipKey = `${text}|${tooltipText}`;
+
+    if (this.lastStatusBarText !== text) {
+      this.statusBar.text = text;
+      this.lastStatusBarText = text;
+    }
+    if (this.lastStatusBarTooltipKey !== tooltipKey) {
+      this.statusBar.tooltip = mdString(tooltipText);
+      this.lastStatusBarTooltipKey = tooltipKey;
+    }
+    if (this.lastStatusBarBgId !== bgId) {
+      this.statusBar.backgroundColor = bgId ? new vscode.ThemeColor(bgId) : undefined;
+      this.lastStatusBarBgId = bgId;
+    }
+    if (!this.lastStatusBarVisible) {
+      this.statusBar.show();
+      this.lastStatusBarVisible = true;
+    }
   }
 
   getTreeItem(node: TreeNode): vscode.TreeItem {
@@ -443,7 +524,10 @@ class SessionNode {
     const labelText = this.entry.title ?? folder;
     const item = new vscode.TreeItem(labelText, vscode.TreeItemCollapsibleState.Expanded);
     item.id = `session:${this.entry.session.sessionFile}`;
-    item.tooltip = `${this.entry.title ?? "(no title)"}\n${this.entry.session.cwd}\n${path.basename(this.entry.session.sessionFile, ".jsonl")}\nstate: ${this.entry.state.state}${this.entry.state.pendingTool ? ` (${this.entry.state.pendingTool})` : ""}`;
+    const stateText = `${this.entry.state.state}${this.entry.state.pendingTool ? ` (${this.entry.state.pendingTool})` : ""}`;
+    item.tooltip = mdString(
+      `**${escMd(this.entry.title ?? "(no title)")}**\n\n\`${this.entry.session.cwd}\`\n\n\`${path.basename(this.entry.session.sessionFile, ".jsonl")}\` — _${stateText}_`,
+    );
     item.iconPath = sessionIconFor(this.entry.state);
     item.contextValue = isCurrent ? "session.current" : "session.other";
     return item;
@@ -468,7 +552,7 @@ class InfoNode {
     const item = new vscode.TreeItem(" ", vscode.TreeItemCollapsibleState.None);
     item.id = `info:${this.entry.session.sessionFile}`;
     item.description = meta;
-    item.tooltip = `${this.entry.session.cwd}\n${status} · ${ago}`;
+    item.tooltip = mdString(`\`${this.entry.session.cwd}\`\n\n${status} · ${ago}`);
     item.contextValue = "session.info";
     return item;
   }
@@ -482,15 +566,23 @@ class TodoNode {
   ) {}
 
   toTreeItem(_currentCwd: string | null): vscode.TreeItem {
-    const label =
-      this.todo.status === "in_progress" && this.todo.activeForm
-        ? this.todo.activeForm
-        : this.todo.content;
+    const { status, content, activeForm } = this.todo;
+    let label = content;
+    let description: string | undefined;
+    if (status === "in_progress" && activeForm) {
+      label = activeForm;
+      if (activeForm !== content) description = content;
+    }
     const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
     item.id = `todo:${this.sessionFile}:${this.index}`;
-    item.iconPath = iconFor(this.todo.status);
-    item.tooltip = this.todo.content;
-    item.contextValue = `todo.${this.todo.status}`;
+    item.iconPath = iconFor(status);
+    item.resourceUri = vscode.Uri.parse(`claude-todo:/${status}`);
+    if (description) item.description = description;
+    const tip = activeForm && status === "in_progress" && activeForm !== content
+      ? `${escMd(content)}\n\n_${status} — ${escMd(activeForm)}_`
+      : `${escMd(content)}\n\n_${status}_`;
+    item.tooltip = mdString(tip);
+    item.contextValue = `todo.${status}`;
     return item;
   }
 }
@@ -552,7 +644,7 @@ function timeAgoMs(diff: number): string {
 function iconFor(status: TodoStatus): vscode.ThemeIcon {
   switch (status) {
     case "completed":
-      return new vscode.ThemeIcon("check", new vscode.ThemeColor("testing.iconPassed"));
+      return new vscode.ThemeIcon("check", new vscode.ThemeColor("disabledForeground"));
     case "in_progress":
       return new vscode.ThemeIcon("loading~spin", new vscode.ThemeColor("charts.blue"));
     case "pending":
@@ -571,4 +663,24 @@ function sessionIconFor(state: SessionStateInfo): vscode.ThemeIcon {
     default:
       return new vscode.ThemeIcon("check", new vscode.ThemeColor("testing.iconPassed"));
   }
+}
+
+class TodoDecorationProvider implements vscode.FileDecorationProvider {
+  provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
+    if (uri.scheme !== "claude-todo") return undefined;
+    if (uri.path === "/completed") {
+      return { color: new vscode.ThemeColor("disabledForeground") };
+    }
+    return undefined;
+  }
+}
+
+function mdString(value: string): vscode.MarkdownString {
+  const md = new vscode.MarkdownString(value);
+  md.isTrusted = false;
+  return md;
+}
+
+function escMd(s: string): string {
+  return s.replace(/[\\`*_{}\[\]()#+\-.!<>|]/g, (c) => `\\${c}`);
 }
