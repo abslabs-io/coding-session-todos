@@ -7,13 +7,21 @@ VSCode extension. TypeScript 5, `@types/vscode` 1.85, no runtime deps. Renders a
 - **Build:** `npm run build` (compiles to `out/`)
 - **Watch:** `npm run watch`
 - **Package:** `npm run package` (produces `claude-todos-<version>.vsix` via `vsce`)
-- **Run in dev:** Open the folder in VSCode and press `F5` — launches an Extension Development Host with the extension loaded. No test runner.
+- **Typecheck (src + tests):** `npm run typecheck` (`tsc --noEmit -p tsconfig.test.json`)
+- **Test:** `npm test` (vitest in `tests/`) — `npm run test:watch` for watch mode
+- **Run in dev:** Open the folder in VSCode and press `F5` — launches an Extension Development Host with the extension loaded.
+
+## Pre-commit hook
+
+`npm install` runs `scripts/setup-hooks.js`, which points git at `.githooks/` via `git config core.hooksPath`. The hook runs `typecheck` then `test`. Bypass with `git commit --no-verify` if you must.
 
 ## Key Paths
 
 - `src/extension.ts` — `TodosProvider` (the single `TreeDataProvider`), file watchers, throttled refresh, state tickers, chrome (title/badge) updates.
 - `src/sessionFinder.ts` — Locates `~/.claude/projects/<dir>/*.jsonl`, lists every transcript with mtime inside the active window, reads the tail.
 - `src/parser.ts` — Scans JSONL text backwards for the latest `TodoWrite` snapshot, the latest `ai-title`, and computes session state from unresolved `tool_use` ids.
+- `src/format.ts` — Pure helpers shared by `extension.ts`: `currentPosition`, `timeAgoMs`/`relativeTime`, `escMd`, `same{Todos,State,Entries}`, and the `SessionEntry` type. No VSCode imports — all directly testable.
+- `tests/` — vitest suite covering `parser.ts`, `format.ts`, and the fs-bound bits of `sessionFinder.ts` (via temp dirs + `HOME` override). VSCode-dependent code in `extension.ts` is not unit-tested; exercise it via `F5`.
 - `media/icon.svg` — Activity bar icon.
 - `package.json` `contributes` — View container `claudeTodos`, view `claudeTodos.list`, `claudeTodos.refresh` / `claudeTodos.expandAll` / `claudeTodos.collapseAll` / `claudeTodos.openSettings` commands, the `claudeTodos.activeSessionMinutes` configuration property, and the `viewsWelcome` gated on the `claudeTodos.state` context key.
 

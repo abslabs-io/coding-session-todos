@@ -108,12 +108,17 @@
     "build": "tsc -p .",
     "watch": "tsc -p . -w",
     "package": "vsce package",
-    "vscode:prepublish": "tsc -p ."
+    "vscode:prepublish": "tsc -p .",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "node scripts/setup-hooks.js"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.9.1",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.7"
   }
 }

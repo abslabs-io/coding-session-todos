@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Pre-commit gate: typecheck (src + tests) then run the test suite.
+# Skip with `git commit --no-verify` if absolutely needed.
+set -e
+
+echo "[pre-commit] typecheck"
+npm run --silent typecheck
+
+echo "[pre-commit] tests"
+npm run --silent test
