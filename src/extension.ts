@@ -423,7 +423,9 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
           return `${p.current}/${p.total}`;
         })()
       : "Claude";
-    const text = `${glyph} ${counts}`;
+    const pct = contextPercent(current?.context ?? null);
+    const ctxSeg = pct === null ? "" : ` · ${pct}%`;
+    const text = `${glyph} ${counts}${ctxSeg}`;
 
     const now = Date.now();
     const tooltipLines = this.entries.map((e) => {
