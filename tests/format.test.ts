@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  contextLabel,
+  contextPercent,
   currentPosition,
   escMd,
   relativeTime,
@@ -8,6 +10,7 @@ import {
   sameState,
   sameTodos,
   timeAgoMs,
+  windowForModel,
   type SessionEntry,
 } from "../src/format";
 import type { SessionStateInfo, Todo } from "../src/parser";
@@ -156,6 +159,71 @@ describe("sameState", () => {
   });
 });
 
+describe("windowForModel", () => {
+  test("opus models map to the 1M window (4.7 and 4.8 ship 1M in Claude Code)", () => {
+    expect(windowForModel("claude-opus-4-8")).toBe(1_000_000);
+    expect(windowForModel("claude-opus-4-7")).toBe(1_000_000);
+    expect(windowForModel("opus")).toBe(1_000_000);
+  });
+
+  test("matching is case-insensitive", () => {
+    expect(windowForModel("CLAUDE-OPUS-4-8")).toBe(1_000_000);
+    expect(windowForModel("Opus")).toBe(1_000_000);
+  });
+
+  test("sonnet and haiku map to 200k", () => {
+    expect(windowForModel("claude-sonnet-4-6")).toBe(200_000);
+    expect(windowForModel("claude-haiku-4-5")).toBe(200_000);
+  });
+
+  test("null and unknown models default to 200k (conservative)", () => {
+    expect(windowForModel(null)).toBe(200_000);
+    expect(windowForModel("some-future-model")).toBe(200_000);
+  });
+});
+
+describe("contextPercent", () => {
+  test("returns null for null context", () => {
+    expect(contextPercent(null)).toBeNull();
+  });
+
+  test("rounds used/window to an integer percent", () => {
+    // 43,704 / 200,000 = 21.852 → 22
+    expect(contextPercent({ usedTokens: 43_704, model: "claude-sonnet-4-6" })).toBe(22);
+  });
+
+  test("uses the 1M window for opus", () => {
+    // 334,618 / 1,000,000 = 33.46 → 33
+    expect(contextPercent({ usedTokens: 334_618, model: "claude-opus-4-8" })).toBe(33);
+  });
+
+  test("clamps to 100 when usage exceeds the window", () => {
+    expect(contextPercent({ usedTokens: 250_000, model: "claude-sonnet-4-6" })).toBe(100);
+  });
+
+  test("reports 100 at exactly the window boundary", () => {
+    expect(contextPercent({ usedTokens: 200_000, model: "claude-sonnet-4-6" })).toBe(100);
+  });
+
+  test("floors small usage to 0", () => {
+    expect(contextPercent({ usedTokens: 100, model: "claude-sonnet-4-6" })).toBe(0);
+  });
+});
+
+describe("contextLabel", () => {
+  test("returns '' for null context", () => {
+    expect(contextLabel(null)).toBe("");
+  });
+
+  test("formats the percent with a ' ctx' suffix", () => {
+    expect(contextLabel({ usedTokens: 43_704, model: "claude-sonnet-4-6" })).toBe("22% ctx");
+  });
+
+  test("uses the 1M window for opus", () => {
+    expect(contextLabel({ usedTokens: 334_618, model: "claude-opus-4-8" })).toBe("33% ctx");
+  });
+});
+
 describe("sameEntries", () => {
   function entry(overrides: Partial<SessionEntry> & { file: string }): SessionEntry {
     return {
@@ -163,6 +231,7 @@ describe("sameEntries", () => {
       snapshot: overrides.snapshot ?? null,
       title: overrides.title ?? null,
       state: overrides.state ?? { state: "idle" },
+      context: overrides.context ?? null,
     };
   }
 
@@ -208,13 +277,14 @@ describe("sameEntries", () => {
     expect(sameEntries(a, b)).toBe(false);
   });
 
-  test("differing mtime alone is NOT a change (only file/title/todos/state)", () => {
+  test("differing mtime alone is NOT a change (only file/title/todos/state/ctx%)", () => {
     const a: SessionEntry[] = [
       {
         session: { sessionFile: "a", cwd: "/x", mtimeMs: 1 },
         snapshot: null,
         title: "t",
         state: { state: "idle" },
+        context: null,
       },
     ];
     const b: SessionEntry[] = [
@@ -223,8 +293,27 @@ describe("sameEntries", () => {
         snapshot: null,
         title: "t",
         state: { state: "idle" },
+        context: null,
       },
     ];
     expect(sameEntries(a, b)).toBe(true);
+  });
+
+  test("gaining a context reading (null → value) registers as unequal", () => {
+    const a = [entry({ file: "a", context: null })];
+    const b = [entry({ file: "a", context: { usedTokens: 60_000, model: "claude-sonnet-4-6" } })];
+    expect(sameEntries(a, b)).toBe(false);
+  });
+
+  test("a change in the displayed context % registers as unequal", () => {
+    const a = [entry({ file: "a", context: { usedTokens: 44_000, model: "claude-sonnet-4-6" } })];
+    const b = [entry({ file: "a", context: { usedTokens: 60_000, model: "claude-sonnet-4-6" } })];
+    expect(sameEntries(a, b)).toBe(false); // 22% vs 30%
+  });
+
+  test("token drift that rounds to the same % is NOT a change", () => {
+    const a = [entry({ file: "a", context: { usedTokens: 43_000, model: "claude-sonnet-4-6" } })];
+    const b = [entry({ file: "a", context: { usedTokens: 43_800, model: "claude-sonnet-4-6" } })];
+    expect(sameEntries(a, b)).toBe(true); // both round to 22%
   });
 });

@@ -3,6 +3,8 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import {
+  ContextInfo,
+  findLatestContext,
   findLatestTitle,
   findLatestTodos,
   findSessionState,
@@ -13,6 +15,8 @@ import {
 } from "./parser";
 import { findActiveSessions, projectsRoot, readTail } from "./sessionFinder";
 import {
+  contextLabel,
+  contextPercent,
   currentPosition,
   escMd,
   relativeTime,
@@ -164,8 +168,11 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     const sessions = await findActiveSessions(this.getActiveWindowMs());
     const entries: SessionEntry[] = [];
     for (const session of sessions) {
-      const { snapshot, title, state } = await loadEntry(session.sessionFile, session.mtimeMs);
-      entries.push({ session, snapshot, title, state });
+      const { snapshot, title, state, context } = await loadEntry(
+        session.sessionFile,
+        session.mtimeMs,
+      );
+      entries.push({ session, snapshot, title, state, context });
     }
     const changed = !sameEntries(this.entries, entries);
     this.entries = entries;
@@ -293,16 +300,18 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     } catch {
       // keep previous mtime
     }
-    const { snapshot, title, state } = await loadEntry(file, mtimeMs);
+    const { snapshot, title, state, context } = await loadEntry(file, mtimeMs);
     const changed =
       !sameTodos(prev.snapshot?.todos, snapshot?.todos) ||
       prev.title !== title ||
-      !sameState(prev.state, state);
+      !sameState(prev.state, state) ||
+      contextPercent(prev.context) !== contextPercent(context);
     this.entries[idx] = {
       session: { ...prev.session, mtimeMs },
       snapshot,
       title,
       state,
+      context,
     };
     this.entries.sort((a, b) => b.session.mtimeMs - a.session.mtimeMs);
     this.syncStateTickers();
@@ -427,7 +436,9 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
           })()
         : "no todos";
       const title = e.title ?? path.basename(e.session.cwd) ?? e.session.cwd;
-      return `- **${escMd(title)}** · ${c} · ${e.state.state} · ${ago}`;
+      const label = contextLabel(e.context);
+      const ctx = label ? `${label} · ` : "";
+      return `- **${escMd(title)}** · ${c} · ${ctx}${e.state.state} · ${ago}`;
     });
     const tooltipText = tooltipLines.join("\n");
     const tooltipKey = `${text}|${tooltipText}`;
@@ -506,7 +517,12 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
 async function loadEntry(
   file: string,
   mtimeMs: number,
-): Promise<{ snapshot: TodosSnapshot | null; title: string | null; state: SessionStateInfo }> {
+): Promise<{
+  snapshot: TodosSnapshot | null;
+  title: string | null;
+  state: SessionStateInfo;
+  context: ContextInfo | null;
+}> {
   try {
     let text = await readTail(file);
     let snap = findLatestTodos(text);
@@ -517,9 +533,13 @@ async function loadEntry(
       title = title ?? findLatestTitle(text);
     }
     const state = findSessionState(text, mtimeMs);
-    return { snapshot: snap, title, state };
+    // Context comes from the latest assistant turn, always within the tail —
+    // deliberately not part of the full-file fallback above, so a session
+    // without usage never triggers a 20MB+ read.
+    const context = findLatestContext(text);
+    return { snapshot: snap, title, state, context };
   } catch {
-    return { snapshot: null, title: null, state: { state: "idle" } };
+    return { snapshot: null, title: null, state: { state: "idle" }, context: null };
   }
 }
 
@@ -533,8 +553,10 @@ class SessionNode {
     const item = new vscode.TreeItem(labelText, vscode.TreeItemCollapsibleState.Expanded);
     item.id = `session:${this.entry.session.sessionFile}`;
     const stateText = `${this.entry.state.state}${this.entry.state.pendingTool ? ` (${this.entry.state.pendingTool})` : ""}`;
+    const label = contextLabel(this.entry.context);
+    const ctxText = label ? ` · ${label}` : "";
     item.tooltip = mdString(
-      `**${escMd(this.entry.title ?? "(no title)")}**\n\n\`${this.entry.session.cwd}\`\n\n\`${path.basename(this.entry.session.sessionFile, ".jsonl")}\` — _${stateText}_`,
+      `**${escMd(this.entry.title ?? "(no title)")}**\n\n\`${this.entry.session.cwd}\`\n\n\`${path.basename(this.entry.session.sessionFile, ".jsonl")}\` — _${stateText}_${ctxText}`,
     );
     item.iconPath = sessionIconFor(this.entry.state);
     item.contextValue = isCurrent ? "session.current" : "session.other";
@@ -554,13 +576,17 @@ class InfoNode {
     const status = todos.length > 0
       ? `${currentPosition(todos).current} / ${currentPosition(todos).total}`
       : "no todos";
-    const meta = `${folder} · ${status} · ${ago}`;
+    const pct = contextPercent(this.entry.context);
+    const rowCtx = pct === null ? "" : ` · ${pct}%`;
+    const label = contextLabel(this.entry.context);
+    const tipCtx = label ? ` · ${label}` : "";
+    const meta = `${folder} · ${status}${rowCtx} · ${ago}`;
     // Empty label + meta in description renders in the dim description
     // color, reading as a caption under the title rather than a sibling row.
     const item = new vscode.TreeItem(" ", vscode.TreeItemCollapsibleState.None);
     item.id = `info:${this.entry.session.sessionFile}`;
     item.description = meta;
-    item.tooltip = mdString(`\`${this.entry.session.cwd}\`\n\n${status} · ${ago}`);
+    item.tooltip = mdString(`\`${this.entry.session.cwd}\`\n\n${status}${tipCtx} · ${ago}`);
     item.contextValue = "session.info";
     return item;
   }

@@ -1,11 +1,41 @@
 import type { ActiveSession } from "./sessionFinder";
-import type { SessionStateInfo, Todo, TodosSnapshot } from "./parser";
+import type { ContextInfo, SessionStateInfo, Todo, TodosSnapshot } from "./parser";
 
 export interface SessionEntry {
   session: ActiveSession;
   snapshot: TodosSnapshot | null;
   title: string | null;
   state: SessionStateInfo;
+  context: ContextInfo | null;
+}
+
+const WINDOW_200K = 200_000;
+const WINDOW_1M = 1_000_000;
+
+// Resolves the context-window size for a model. Opus ships a 1M window by
+// default (4.7 and 4.8 in Claude Code); Sonnet/Haiku and anything unknown
+// are treated as 200k. Defaulting unknown models to 200k is the conservative
+// choice — an unfamiliar model reads as fuller, never falsely reassuring.
+export function windowForModel(model: string | null): number {
+  if (model && model.toLowerCase().includes("opus")) return WINDOW_1M;
+  return WINDOW_200K;
+}
+
+// Integer percent of the context window consumed at the latest turn, or null
+// when no usage is known (so callers can omit the segment entirely).
+export function contextPercent(ctx: ContextInfo | null): number | null {
+  if (!ctx) return null;
+  const window = windowForModel(ctx.model);
+  const pct = Math.round((ctx.usedTokens / window) * 100);
+  return Math.max(0, Math.min(100, pct));
+}
+
+// Labeled context segment shared by the tooltips, e.g. "22% ctx", or "" when
+// usage is unknown so callers can omit it. Centralizing the wording keeps the
+// three tooltips identical.
+export function contextLabel(ctx: ContextInfo | null): string {
+  const pct = contextPercent(ctx);
+  return pct === null ? "" : `${pct}% ctx`;
 }
 
 export function currentPosition(todos: Todo[]): { current: number; total: number } {
@@ -62,6 +92,9 @@ export function sameEntries(a: SessionEntry[], b: SessionEntry[]): boolean {
     if (a[i].title !== b[i].title) return false;
     if (!sameTodos(a[i].snapshot?.todos, b[i].snapshot?.todos)) return false;
     if (!sameState(a[i].state, b[i].state)) return false;
+    // Compare the displayed integer %, not raw tokens, so the view doesn't
+    // re-render on every token tick — only when the visible number changes.
+    if (contextPercent(a[i].context) !== contextPercent(b[i].context)) return false;
   }
   return true;
 }

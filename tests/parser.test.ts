@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  findLatestContext,
   findLatestTitle,
   findLatestTodos,
   findSessionState,
@@ -9,6 +10,7 @@ import {
 import {
   aiTitleLine,
   assistantToolUseLine,
+  assistantUsageLine,
   jsonl,
   todoWriteLine,
   toolResultLine,
@@ -100,6 +102,86 @@ describe("findLatestTitle", () => {
   test("ignores objects that mention ai-title but aren't ai-title type", () => {
     const text = jsonl({ type: "user", note: "the ai-title was set" });
     expect(findLatestTitle(text)).toBeNull();
+  });
+});
+
+describe("findLatestContext", () => {
+  test("returns null when no usage line exists", () => {
+    const text = jsonl(userTextLine("hi"), aiTitleLine("Some session"));
+    expect(findLatestContext(text)).toBeNull();
+  });
+
+  test("sums input + cache_creation + cache_read and captures the model", () => {
+    const text = jsonl(
+      assistantUsageLine({
+        model: "claude-opus-4-8",
+        inputTokens: 1287,
+        cacheCreationTokens: 21656,
+        cacheReadTokens: 311675,
+      }),
+    );
+    expect(findLatestContext(text)).toEqual({ usedTokens: 334618, model: "claude-opus-4-8" });
+  });
+
+  test("returns the latest usage when several exist", () => {
+    const text = jsonl(
+      assistantUsageLine({ inputTokens: 10, cacheReadTokens: 90 }),
+      assistantUsageLine({ inputTokens: 5, cacheReadTokens: 495, model: "claude-sonnet-4-6" }),
+    );
+    expect(findLatestContext(text)).toEqual({ usedTokens: 500, model: "claude-sonnet-4-6" });
+  });
+
+  test("skips sidechain (subagent) turns in favour of the main chain", () => {
+    const text = jsonl(
+      assistantUsageLine({ inputTokens: 1000, model: "claude-opus-4-8" }),
+      assistantUsageLine({ isSidechain: true, inputTokens: 50, model: "claude-haiku-4-5" }),
+    );
+    expect(findLatestContext(text)).toEqual({ usedTokens: 1000, model: "claude-opus-4-8" });
+  });
+
+  test("skips <synthetic> model turns", () => {
+    const text = jsonl(
+      assistantUsageLine({ inputTokens: 2000, model: "claude-opus-4-8" }),
+      assistantUsageLine({ inputTokens: 7, model: "<synthetic>" }),
+    );
+    expect(findLatestContext(text)).toEqual({ usedTokens: 2000, model: "claude-opus-4-8" });
+  });
+
+  test("skips zero-usage turns", () => {
+    const text = jsonl(assistantUsageLine({ inputTokens: 0, cacheReadTokens: 0 }));
+    expect(findLatestContext(text)).toBeNull();
+  });
+
+  test("skips non-assistant messages that carry a usage object", () => {
+    // A user/tool turn could in principle echo a usage field; only assistant
+    // turns count toward context. The most recent line here is a user turn.
+    const userWithUsage = {
+      type: "user",
+      message: { role: "user", usage: { input_tokens: 999 } },
+    };
+    const text = jsonl(
+      assistantUsageLine({ inputTokens: 100, model: "claude-opus-4-8" }),
+      userWithUsage,
+    );
+    expect(findLatestContext(text)).toEqual({ usedTokens: 100, model: "claude-opus-4-8" });
+  });
+
+  test("tolerates missing usage subfields", () => {
+    const text = jsonl(
+      assistantUsageLine({ inputTokens: 100 }), // cache fields default to 0
+    );
+    expect(findLatestContext(text)).toEqual({ usedTokens: 100, model: "claude-opus-4-8" });
+  });
+
+  test("captures null model when the model field is absent", () => {
+    const text = jsonl(assistantUsageLine({ model: null, inputTokens: 42 }));
+    expect(findLatestContext(text)).toEqual({ usedTokens: 42, model: null });
+  });
+
+  test("skips lines that fail to parse (e.g. partial first line from a tail read)", () => {
+    const valid = jsonl(assistantUsageLine({ inputTokens: 123 }));
+    const text = `{ partial broken json with "usage" inside\n${valid}`;
+    expect(findLatestContext(text)).toEqual({ usedTokens: 123, model: "claude-opus-4-8" });
   });
 });
 

@@ -47,6 +47,31 @@ export function assistantToolUseLine(opts: {
   };
 }
 
+export function assistantUsageLine(opts: {
+  model?: string | null;
+  inputTokens?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+  isSidechain?: boolean;
+  timestamp?: string;
+}): Record<string, unknown> {
+  return {
+    type: "assistant",
+    isSidechain: opts.isSidechain,
+    timestamp: opts.timestamp,
+    message: {
+      role: "assistant",
+      model: opts.model === undefined ? "claude-opus-4-8" : opts.model,
+      usage: {
+        input_tokens: opts.inputTokens ?? 0,
+        cache_creation_input_tokens: opts.cacheCreationTokens ?? 0,
+        cache_read_input_tokens: opts.cacheReadTokens ?? 0,
+        output_tokens: 0,
+      },
+    },
+  };
+}
+
 export function toolResultLine(toolUseId: string): Record<string, unknown> {
   return {
     type: "user",

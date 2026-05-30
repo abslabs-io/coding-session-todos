@@ -77,6 +77,64 @@ export function findLatestTitle(text: string): string | null {
   return null;
 }
 
+export interface ContextInfo {
+  // Sum of input-side tokens at the latest assistant turn (input +
+  // cache_creation + cache_read), matching what Claude Code's /context
+  // counts. Excludes output_tokens.
+  usedTokens: number;
+  // The model that produced the turn, used downstream to pick the window
+  // size (opus → 1M, others → 200k). null if absent.
+  model: string | null;
+}
+
+interface UsageShape {
+  input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+interface ContextLine {
+  type?: string;
+  isSidechain?: boolean;
+  message?: {
+    role?: string;
+    model?: string;
+    usage?: UsageShape;
+  };
+}
+
+// Scans a transcript tail backwards for the most recent main-chain assistant
+// turn and returns its input-context size and model. Sidechain (subagent)
+// turns and `<synthetic>` model turns are skipped so the number reflects the
+// main session's window. Returns null when no usable usage is found. This
+// tracks /compact and /clear automatically, since the next turn's usage drops.
+export function findLatestContext(text: string): ContextInfo | null {
+  const lines = text.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line || line.indexOf('"usage"') === -1) continue;
+    let parsed: ContextLine;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed.isSidechain === true) continue;
+    const msg = parsed.message;
+    if (!msg || (parsed.type !== "assistant" && msg.role !== "assistant")) continue;
+    if (msg.model === "<synthetic>") continue;
+    const usage = msg.usage;
+    if (!usage) continue;
+    const usedTokens =
+      (usage.input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0) +
+      (usage.cache_read_input_tokens ?? 0);
+    if (usedTokens === 0) continue;
+    return { usedTokens, model: typeof msg.model === "string" ? msg.model : null };
+  }
+  return null;
+}
+
 export type SessionState = "active" | "waiting" | "idle";
 
 export interface SessionStateInfo {
