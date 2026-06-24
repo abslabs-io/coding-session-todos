@@ -1,3 +1,5 @@
+import * as path from "path";
+
 import type { ActiveSession } from "./sessionFinder";
 import type { ContextInfo, SessionStateInfo, Todo, TodosSnapshot } from "./parser";
 
@@ -7,6 +9,36 @@ export interface SessionEntry {
   title: string | null;
   state: SessionStateInfo;
   context: ContextInfo | null;
+}
+
+// True when `cwd` is the workspace `root` itself or a directory nested under
+// it. Drives which session the status bar reflects: prefer the session sitting
+// exactly at the workspace folder, else the most recent one running inside it
+// (e.g. a Claude session started in a subdirectory). Cross-drive or sibling
+// paths (relative path escapes with "..") are outside the workspace.
+export function isWithinWorkspace(cwd: string, root: string): boolean {
+  if (!root || !cwd) return false;
+  // "" means the same directory; a ".."-leading or absolute relative path means
+  // cwd escaped the root (sibling, ancestor, or a different drive on Windows).
+  const rel = path.relative(root, cwd);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+// Picks the session the status bar reflects: the one sitting exactly at the
+// workspace `root`, else the most recently active session running inside it.
+// Returns null when no session is within the workspace (the caller then shows
+// just the neutral icon). `entries` is assumed sorted most-recent-first — the
+// order the provider maintains — so `find` returns the latest match.
+export function selectStatusBarSession(
+  entries: SessionEntry[],
+  root: string | null,
+): SessionEntry | null {
+  if (!root) return null;
+  return (
+    entries.find((e) => e.session.cwd === root) ??
+    entries.find((e) => isWithinWorkspace(e.session.cwd, root)) ??
+    null
+  );
 }
 
 const WINDOW_200K = 200_000;

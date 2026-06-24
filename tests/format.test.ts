@@ -5,10 +5,12 @@ import {
   contextPercent,
   currentPosition,
   escMd,
+  isWithinWorkspace,
   relativeTime,
   sameEntries,
   sameState,
   sameTodos,
+  selectStatusBarSession,
   timeAgoMs,
   windowForModel,
   type SessionEntry,
@@ -52,6 +54,107 @@ describe("currentPosition", () => {
       { content: "b", status: "pending" },
     ];
     expect(currentPosition(todos)).toEqual({ current: 1, total: 2 });
+  });
+});
+
+describe("isWithinWorkspace", () => {
+  test("a session sitting exactly at the workspace folder is within it", () => {
+    expect(isWithinWorkspace("/code/app", "/code/app")).toBe(true);
+  });
+
+  test("a session in a subdirectory is within the workspace", () => {
+    expect(isWithinWorkspace("/code/app/packages/api", "/code/app")).toBe(true);
+  });
+
+  test("a sibling directory is not within the workspace (no string-prefix false positives)", () => {
+    // "/code/app2" must NOT match workspace "/code/app".
+    expect(isWithinWorkspace("/code/app2", "/code/app")).toBe(false);
+  });
+
+  test("an ancestor directory is not within the workspace", () => {
+    expect(isWithinWorkspace("/code", "/code/app")).toBe(false);
+  });
+
+  test("an unrelated path is not within the workspace", () => {
+    expect(isWithinWorkspace("/other/place", "/code/app")).toBe(false);
+  });
+
+  test("empty root or cwd is never within", () => {
+    expect(isWithinWorkspace("/code/app", "")).toBe(false);
+    expect(isWithinWorkspace("", "/code/app")).toBe(false);
+  });
+
+  test("a trailing slash on either side still matches the same directory", () => {
+    expect(isWithinWorkspace("/code/app", "/code/app/")).toBe(true);
+    expect(isWithinWorkspace("/code/app/", "/code/app")).toBe(true);
+  });
+
+  test("a deeply nested subdirectory is within the workspace", () => {
+    expect(isWithinWorkspace("/code/app/a/b/c/d", "/code/app")).toBe(true);
+  });
+
+  test("the filesystem root as workspace contains everything", () => {
+    expect(isWithinWorkspace("/code/app", "/")).toBe(true);
+  });
+});
+
+describe("selectStatusBarSession", () => {
+  function entry(file: string, cwd: string, mtimeMs: number): SessionEntry {
+    return {
+      session: { sessionFile: file, cwd, mtimeMs },
+      snapshot: null,
+      title: null,
+      state: { state: "idle" },
+      context: null,
+    };
+  }
+
+  const ROOT = "/code/app";
+
+  test("returns null when there is no workspace root", () => {
+    const entries = [entry("a", ROOT, 3)];
+    expect(selectStatusBarSession(entries, null)).toBeNull();
+  });
+
+  test("returns null when there are no sessions", () => {
+    expect(selectStatusBarSession([], ROOT)).toBeNull();
+  });
+
+  test("prefers the exact workspace-cwd session", () => {
+    const exact = entry("exact", ROOT, 5);
+    const entries = [exact];
+    expect(selectStatusBarSession(entries, ROOT)).toBe(exact);
+  });
+
+  test("prefers the exact match even when a nested session is more recent", () => {
+    // entries are sorted most-recent-first by the provider; the nested session
+    // is newer, but the session sitting exactly at the workspace wins.
+    const nested = entry("nested", "/code/app/sub", 9);
+    const exact = entry("exact", ROOT, 2);
+    const entries = [nested, exact];
+    expect(selectStatusBarSession(entries, ROOT)).toBe(exact);
+  });
+
+  test("falls back to the most recent session within the workspace", () => {
+    // No exact match; the first within-workspace entry wins (newest first).
+    const newerSub = entry("newer", "/code/app/api", 9);
+    const olderSub = entry("older", "/code/app/web", 4);
+    const entries = [newerSub, olderSub];
+    expect(selectStatusBarSession(entries, ROOT)).toBe(newerSub);
+  });
+
+  test("ignores sessions outside the workspace entirely", () => {
+    const sibling = entry("sibling", "/code/app2", 9);
+    const other = entry("other", "/elsewhere", 8);
+    const entries = [sibling, other];
+    expect(selectStatusBarSession(entries, ROOT)).toBeNull();
+  });
+
+  test("picks the in-workspace session when out-of-workspace sessions are more recent", () => {
+    const recentOutsider = entry("outsider", "/elsewhere", 9);
+    const inside = entry("inside", "/code/app/pkg", 3);
+    const entries = [recentOutsider, inside];
+    expect(selectStatusBarSession(entries, ROOT)).toBe(inside);
   });
 });
 

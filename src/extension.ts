@@ -23,6 +23,7 @@ import {
   sameEntries,
   sameState,
   sameTodos,
+  selectStatusBarSession,
   SessionEntry,
   timeAgoMs,
 } from "./format";
@@ -44,6 +45,8 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = "workbench.view.extension.claudeTodos";
+  // The widget is always visible; updateStatusBar only mutates its text/tooltip/bg.
+  statusBar.show();
   provider.attachView(view, statusBar);
   context.subscriptions.push(
     view,
@@ -351,7 +354,6 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
   private lastStatusBarText: string | undefined;
   private lastStatusBarTooltipKey: string | undefined;
   private lastStatusBarBgId: string | undefined;
-  private lastStatusBarVisible = false;
 
   private updateChrome(): void {
     const state: ViewState = this.entries.length === 0 ? "noSessions" : "ready";
@@ -393,39 +395,39 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
 
   private updateStatusBar(): void {
     if (!this.statusBar) return;
-    const current = this.entries.find((e) => e.session.cwd === this.currentCwd);
-    const todos = current?.snapshot?.todos ?? [];
-    const hasTodos = todos.length > 0;
-    const stateName = current?.state.state ?? "idle";
+    // Sessions outside this window's workspace never drive the widget — only
+    // the tooltip below lists them.
+    const current = selectStatusBarSession(this.entries, this.currentCwd);
 
-    const hide = !current || (stateName === "idle" && !hasTodos);
-    if (hide) {
-      if (this.lastStatusBarVisible) {
-        this.statusBar.hide();
-        this.lastStatusBarVisible = false;
-      }
-      return;
-    }
-
-    let glyph: string;
     let bgId: string | undefined;
-    if (stateName === "waiting") {
-      glyph = "$(warning)";
-      bgId = "statusBarItem.warningBackground";
-    } else if (stateName === "active") {
-      glyph = "$(loading~spin)";
+    let text: string;
+    if (current) {
+      const todos = current.snapshot?.todos ?? [];
+      const hasTodos = todos.length > 0;
+      const stateName = current.state.state;
+      let glyph: string;
+      if (stateName === "waiting") {
+        glyph = "$(warning)";
+        bgId = "statusBarItem.warningBackground";
+      } else if (stateName === "active") {
+        glyph = "$(loading~spin)";
+      } else {
+        glyph = "$(checklist)";
+      }
+      const counts = hasTodos
+        ? (() => {
+            const p = currentPosition(todos);
+            return `${p.current}/${p.total}`;
+          })()
+        : "Claude";
+      const pct = contextPercent(current.context);
+      const ctxSeg = pct === null ? "" : ` · ${pct}%`;
+      text = `${glyph} ${counts}${ctxSeg}`;
     } else {
-      glyph = "$(checklist)";
+      // No session within this workspace: show just the neutral icon. The
+      // tooltip below still enumerates every active session, if any.
+      text = "$(checklist)";
     }
-    const counts = hasTodos
-      ? (() => {
-          const p = currentPosition(todos);
-          return `${p.current}/${p.total}`;
-        })()
-      : "Claude";
-    const pct = contextPercent(current?.context ?? null);
-    const ctxSeg = pct === null ? "" : ` · ${pct}%`;
-    const text = `${glyph} ${counts}${ctxSeg}`;
 
     const now = Date.now();
     const tooltipLines = this.entries.map((e) => {
@@ -456,10 +458,6 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     if (this.lastStatusBarBgId !== bgId) {
       this.statusBar.backgroundColor = bgId ? new vscode.ThemeColor(bgId) : undefined;
       this.lastStatusBarBgId = bgId;
-    }
-    if (!this.lastStatusBarVisible) {
-      this.statusBar.show();
-      this.lastStatusBarVisible = true;
     }
   }
 
