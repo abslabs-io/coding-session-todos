@@ -42,10 +42,19 @@ async function latestJsonlIn(dir: string): Promise<string | null> {
   return best?.path ?? null;
 }
 
+// A transcript's cwd is written once at session start and never changes, so we
+// memoize it per path. Without this, findActiveSessions/findProjectDir re-read
+// the 64KB head of every transcript on every rescan and safety poll. Only
+// successful (string) lookups are cached; a miss — the head not yet flushed with
+// a cwd line — is left uncached so the next pass retries.
+const cwdCache = new Map<string, string>();
+
 // Reads the head of a transcript file and returns the first cwd field
 // it finds. Early lines are often `queue-operation` metadata without a
 // cwd, so we scan up to maxLines forward.
 async function transcriptCwd(filePath: string, maxLines = 50): Promise<string | null> {
+  const cached = cwdCache.get(filePath);
+  if (cached !== undefined) return cached;
   const fh = await fs.promises.open(filePath, "r");
   try {
     const buf = Buffer.alloc(64 * 1024);
@@ -58,7 +67,10 @@ async function transcriptCwd(filePath: string, maxLines = 50): Promise<string | 
       if (!line) continue;
       try {
         const obj = JSON.parse(line) as { cwd?: unknown };
-        if (typeof obj.cwd === "string") return obj.cwd;
+        if (typeof obj.cwd === "string") {
+          cwdCache.set(filePath, obj.cwd);
+          return obj.cwd;
+        }
       } catch {
         // partial / non-JSON line; keep going
       }
