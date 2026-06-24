@@ -70,7 +70,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("claudeTodos.openSettings", () =>
-      vscode.commands.executeCommand("workbench.action.openSettings", "@ext:local.claude-todos"),
+      vscode.commands.executeCommand(
+        "workbench.action.openSettings",
+        `@ext:${context.extension.id}`,
+      ),
     ),
   );
 
@@ -376,18 +379,16 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     const sessionCount = this.entries.length;
     if (sessionCount > 0) {
       nextBadgeValue = sessionCount;
-      nextBadgeTip = sessionCount === 1
-        ? "1 active Claude session"
-        : `${sessionCount} active Claude sessions`;
+      nextBadgeTip =
+        sessionCount === 1 ? "1 active Claude session" : `${sessionCount} active Claude sessions`;
     }
     if (nextTitle !== this.lastTitle) {
       this.view.title = nextTitle;
       this.lastTitle = nextTitle;
     }
     if (nextBadgeValue !== this.lastBadgeValue) {
-      this.view.badge = nextBadgeValue === undefined
-        ? undefined
-        : { value: nextBadgeValue, tooltip: nextBadgeTip };
+      this.view.badge =
+        nextBadgeValue === undefined ? undefined : { value: nextBadgeValue, tooltip: nextBadgeTip };
       this.lastBadgeValue = nextBadgeValue;
     }
     this.view.message = undefined;
@@ -433,12 +434,13 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     const tooltipLines = this.entries.map((e) => {
       const t = e.snapshot?.todos ?? [];
       const ago = relativeTime(e.snapshot?.timestamp ?? "") || timeAgoMs(now - e.session.mtimeMs);
-      const c = t.length > 0
-        ? (() => {
-            const p = currentPosition(t);
-            return `${p.current}/${p.total}`;
-          })()
-        : "no todos";
+      const c =
+        t.length > 0
+          ? (() => {
+              const p = currentPosition(t);
+              return `${p.current}/${p.total}`;
+            })()
+          : "no todos";
       const title = e.title ?? path.basename(e.session.cwd) ?? e.session.cwd;
       const label = contextLabel(e.context);
       const ctx = label ? `${label} · ` : "";
@@ -472,10 +474,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     if (node instanceof SessionNode) {
       const file = node.entry.session.sessionFile;
       const todos = node.entry.snapshot?.todos ?? [];
-      return [
-        new InfoNode(node.entry),
-        ...todos.map((t, i) => new TodoNode(t, file, i)),
-      ];
+      return [new InfoNode(node.entry), ...todos.map((t, i) => new TodoNode(t, file, i))];
     }
     return [];
   }
@@ -573,9 +572,10 @@ class InfoNode {
     const ago =
       relativeTime(this.entry.snapshot?.timestamp ?? "") ||
       timeAgoMs(Date.now() - this.entry.session.mtimeMs);
-    const status = todos.length > 0
-      ? `${currentPosition(todos).current} / ${currentPosition(todos).total}`
-      : "no todos";
+    const status =
+      todos.length > 0
+        ? `${currentPosition(todos).current} / ${currentPosition(todos).total}`
+        : "no todos";
     const pct = contextPercent(this.entry.context);
     const rowCtx = pct === null ? "" : ` · ${pct}%`;
     const label = contextLabel(this.entry.context);
@@ -612,9 +612,10 @@ class TodoNode {
     item.iconPath = iconFor(status);
     item.resourceUri = vscode.Uri.parse(`claude-todo:/${status}`);
     if (description) item.description = description;
-    const tip = activeForm && status === "in_progress" && activeForm !== content
-      ? `${escMd(content)}\n\n_${status} — ${escMd(activeForm)}_`
-      : `${escMd(content)}\n\n_${status}_`;
+    const tip =
+      activeForm && status === "in_progress" && activeForm !== content
+        ? `${escMd(content)}\n\n_${status} — ${escMd(activeForm)}_`
+        : `${escMd(content)}\n\n_${status}_`;
     item.tooltip = mdString(tip);
     item.contextValue = `todo.${status}`;
     return item;
@@ -660,4 +661,3 @@ function mdString(value: string): vscode.MarkdownString {
   md.isTrusted = false;
   return md;
 }
-
