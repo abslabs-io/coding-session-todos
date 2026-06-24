@@ -4,17 +4,33 @@
   "description": "Live sidebar view of Claude Code session todos for the current workspace.",
   "version": "0.0.14",
   "publisher": "local",
-  "private": true,
+  "license": "MIT",
+  "author": "Abhishek Kapadiya",
+  "icon": "media/icon-128.png",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "AI",
+    "Visualization",
     "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "todos",
+    "tasks",
+    "ai",
+    "agent"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/abslabs-io/claude-todos.git"
   },
+  "bugs": {
+    "url": "https://github.com/abslabs-io/claude-todos/issues"
+  },
+  "homepage": "https://github.com/abslabs-io/claude-todos#readme",
   "main": "./out/extension.js",
   "activationEvents": [
     "onStartupFinished"
@@ -107,18 +123,27 @@
   "scripts": {
     "build": "tsc -p .",
     "watch": "tsc -p . -w",
+    "icon": "node scripts/gen-icon.js",
     "package": "vsce package",
     "vscode:prepublish": "tsc -p .",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepare": "node scripts/setup-hooks.js"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^24.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.9.1",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.4",
     "typescript": "^5.4.0",
+    "typescript-eslint": "^8.62.0",
     "vitest": "^4.1.7"
   }
 }

@@ -1,48 +1,85 @@
 # Claude Todos
 
-A VSCode sidebar that mirrors the `TodoWrite` list from the active Claude Code
-session for the current workspace. Tails the transcript JSONL files under
-`~/.claude/projects/` and re-renders on every change.
+A VS Code sidebar that mirrors the live `TodoWrite` task list from your active
+[Claude Code](https://docs.claude.com/en/docs/claude-code) sessions — so you can
+watch the plan unfold without keeping the terminal in focus.
 
-## Build
+It works entirely by tailing the transcript JSONL files Claude Code writes under
+`~/.claude/projects/`. Nothing is sent anywhere; there are no runtime
+dependencies and no configuration required to get started.
+
+## Features
+
+- **Live todo list** — the current `TodoWrite` snapshot for each active session,
+  re-rendered as the transcript changes. The in-progress item is highlighted.
+- **Multi-session aware** — every Claude session touched within the active window
+  shows up, sorted most-recent-first, each with its own todos.
+- **Session state at a glance** — a spinner while Claude is working, a warning
+  when a session looks like it's waiting on you (e.g. a permission prompt), and a
+  check when it's idle.
+- **Context usage** — the percentage of the model's context window consumed,
+  shown per session and in the status bar (matches Claude Code's `/context`).
+- **Status-bar widget** — a compact `current/total · NN%` readout for the session
+  running in your current workspace, with a tooltip listing every active session.
+
+## Requirements
+
+[Claude Code](https://docs.claude.com/en/docs/claude-code) installed and used at
+least once, so transcripts exist under `~/.claude/projects/`. The extension reads
+those files read-only; it does not run or control Claude Code.
+
+## Installation
+
+From the VS Code Marketplace: search for **Claude Todos** in the Extensions view,
+or install from the command line:
+
+```bash
+code --install-extension <publisher>.claude-todos
+```
+
+Or build and install a local `.vsix`:
 
 ```bash
 npm install
-npm run build
+npm run package          # produces claude-todos-<version>.vsix
+code --install-extension claude-todos-<version>.vsix
 ```
 
-This compiles TypeScript into `out/`.
+## Settings
 
-## Run in dev (Extension Development Host)
-
-1. Open this folder in VSCode.
-2. Press `F5` (or run "Debug: Start Debugging").
-3. A second VSCode window opens with the extension loaded.
-4. Open a folder where you use Claude Code, find the **Claude Todos** icon in
-   the activity bar.
-
-## Install locally
-
-```bash
-npm install -g @vscode/vsce
-vsce package        # produces claude-todos-0.0.1.vsix
-code --install-extension claude-todos-0.0.1.vsix
-```
+| Setting                            | Default | Description                                                                                                 |
+| ---------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `claudeTodos.activeSessionMinutes` | `30`    | How recently a session must have been touched (in minutes) to appear in the panel. Min 5, max 1440 (1 day). |
 
 ## How it works
 
-- Resolves the workspace's transcript folder:
-  `~/.claude/projects/<cwd-with-slashes-replaced-by-dashes>/`
-- Picks the most-recently-modified `*.jsonl` as the active session.
-- Reads the trailing ~1MB of that file, scans backward for the latest
-  `"name":"TodoWrite"` tool use, and renders `input.todos`.
-- Re-reads on file change (debounced) and re-picks the session on directory
-  change (in case a new session starts).
+- Lists every transcript under `~/.claude/projects/` whose modification time is
+  within the active window, and reads only the trailing ~1 MB of each (transcripts
+  routinely exceed 20 MB).
+- Scans that tail backward for the latest `TodoWrite` tool call and renders
+  `input.todos`, plus the session's title, inferred state, and context usage.
+- The workspace folder is matched against the `cwd` recorded inside each
+  transcript, not guessed from the folder name (Claude Code's encoding has shifted
+  across versions).
+- Re-reads on file changes (debounced) and re-scans when sessions start, stop, or
+  age out.
 
-## Known limitations (v0.0.1)
+## Privacy
 
-- Picks one session per workspace based on mtime. If you have multiple Claude
-  conversations open in the same folder, it will follow the most recently
-  active one.
-- No grouping / filtering / reorder — flat list mirroring inline rendering.
-- Activity bar icon is a placeholder SVG.
+Everything stays local. The extension only reads transcript files already on your
+machine and makes no network requests.
+
+## Development
+
+```bash
+npm install      # also wires up the pre-commit hook (typecheck + test)
+npm run build    # compile to out/
+npm test         # vitest
+```
+
+Press `F5` in VS Code to launch an Extension Development Host with the extension
+loaded. See [AGENTS.md](AGENTS.md) for architecture notes.
+
+## License
+
+[MIT](LICENSE)
