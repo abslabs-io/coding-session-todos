@@ -160,11 +160,14 @@ interface AssistantContentItem {
 // right now. We can't see permission prompts directly — Claude Code resolves
 // those out-of-band — so any unresolved tool_use that's been sitting past
 // the active window is treated as "waiting on the user".
-export function findSessionState(text: string, mtimeMs: number, nowMs: number = Date.now()): SessionStateInfo {
+export function findSessionState(
+  text: string,
+  mtimeMs: number,
+  nowMs: number = Date.now(),
+): SessionStateInfo {
   const lines = text.split("\n");
   const resolvedIds = new Set<string>();
   const pendingToolUses: { id: string; name: string }[] = [];
-  let sawAssistant = false;
 
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
@@ -179,7 +182,7 @@ export function findSessionState(text: string, mtimeMs: number, nowMs: number = 
     const content = parsed.message?.content;
     if (!Array.isArray(content)) continue;
 
-    if (!sawAssistant && (parsed.type === "user" || role === "user")) {
+    if (parsed.type === "user" || role === "user") {
       for (const item of content as AssistantContentItem[]) {
         if (item?.type === "tool_result" && typeof item.tool_use_id === "string") {
           resolvedIds.add(item.tool_use_id);
@@ -189,7 +192,6 @@ export function findSessionState(text: string, mtimeMs: number, nowMs: number = 
     }
 
     if (parsed.type === "assistant" || role === "assistant") {
-      sawAssistant = true;
       for (const item of content as AssistantContentItem[]) {
         if (item?.type === "tool_use" && typeof item.id === "string") {
           pendingToolUses.push({ id: item.id, name: item.name ?? "" });

@@ -225,10 +225,7 @@ describe("findSessionState", () => {
   });
 
   test("idle when all tool_uses from latest assistant turn have been resolved", () => {
-    const text = jsonl(
-      assistantToolUseLine({ name: "Read", id: "tu_1" }),
-      toolResultLine("tu_1"),
-    );
+    const text = jsonl(assistantToolUseLine({ name: "Read", id: "tu_1" }), toolResultLine("tu_1"));
     const result = findSessionState(text, NOW - 60_000, NOW);
     expect(result).toEqual({ state: "idle" });
   });

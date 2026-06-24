@@ -99,7 +99,7 @@ export function timeAgoMs(diff: number): string {
 }
 
 export function escMd(s: string): string {
-  return s.replace(/[\\`*_{}\[\]()#+\-.!<>|]/g, (c) => `\\${c}`);
+  return s.replace(/[\\`*_{}[\]()#+\-.!<>|]/g, (c) => `\\${c}`);
 }
 
 export function sameTodos(a: Todo[] | undefined, b: Todo[] | undefined): boolean {
