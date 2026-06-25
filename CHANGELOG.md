@@ -3,6 +3,16 @@
 All notable changes to the Coding Session Todos extension are documented here. This
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.0.17]
+
+- Fixed sessions being matched to the directory they _started_ in: the extension
+  now reads the **latest** `cwd` recorded in a transcript rather than the first.
+  A session whose project folder was renamed mid-session (so its original path no
+  longer exists) is again matched to its workspace, and its state and context
+  show in the status bar instead of collapsing to a bare icon.
+- Redesigned the Marketplace icon as a white checklist on a black rounded square,
+  matching the activity-bar logo.
+
 ## [0.0.16]
 
 - First public release on the Visual Studio Code Marketplace, published under the
