@@ -16,7 +16,7 @@ let savedHome: string | undefined;
 let savedUserProfile: string | undefined;
 
 beforeEach(async () => {
-  tempHome = await fs.promises.mkdtemp(path.join(os.tmpdir(), "claude-todos-test-"));
+  tempHome = await fs.promises.mkdtemp(path.join(os.tmpdir(), "coding-session-todos-test-"));
   savedHome = process.env.HOME;
   savedUserProfile = process.env.USERPROFILE;
   process.env.HOME = tempHome;

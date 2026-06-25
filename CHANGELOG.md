@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Claude Todos extension are documented here. This
+All notable changes to the Coding Session Todos extension are documented here. This
 project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.0.14]
@@ -13,5 +13,5 @@ project adheres to [Semantic Versioning](https://semver.org/).
   Code's `/context`.
 - Always-visible status-bar widget reflecting the session in the current
   workspace, with a tooltip listing every active session.
-- `claudeTodos.activeSessionMinutes` setting (default 30) controlling the active
+- `codingSessionTodos.activeSessionMinutes` setting (default 30) controlling the active
   window.

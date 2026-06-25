@@ -32,10 +32,10 @@ jobs:
       - run: npm run build
 
       - name: Package extension
-        run: npx vsce package --out claude-todos-${{ github.ref_name }}.vsix
+        run: npx vsce package --out coding-session-todos-${{ github.ref_name }}.vsix
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: claude-todos-${{ github.ref_name }}.vsix
+          files: coding-session-todos-${{ github.ref_name }}.vsix
           generate_release_notes: true

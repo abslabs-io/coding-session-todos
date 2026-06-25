@@ -1,7 +1,7 @@
 {
-  "name": "claude-todos",
-  "displayName": "Claude Todos",
-  "description": "Live sidebar view of Claude Code session todos for the current workspace.",
+  "name": "coding-session-todos",
+  "displayName": "Coding Session Todos",
+  "description": "Live sidebar view of your Claude Code sessions — todos, state, and context usage — across all your open windows.",
   "version": "0.0.15",
   "publisher": "local",
   "license": "MIT",
@@ -18,19 +18,27 @@
   "keywords": [
     "claude",
     "claude code",
+    "sessions",
     "todos",
+    "todo",
+    "to-do",
+    "to do",
+    "todo list",
     "tasks",
+    "task",
+    "task list",
+    "checklist",
     "ai",
     "agent"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/abslabs-io/claude-todos.git"
+    "url": "https://github.com/abslabs-io/coding-session-todos.git"
   },
   "bugs": {
-    "url": "https://github.com/abslabs-io/claude-todos/issues"
+    "url": "https://github.com/abslabs-io/coding-session-todos/issues"
   },
-  "homepage": "https://github.com/abslabs-io/claude-todos#readme",
+  "homepage": "https://github.com/abslabs-io/coding-session-todos#readme",
   "main": "./out/extension.js",
   "activationEvents": [
     "onStartupFinished"
@@ -39,16 +47,16 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "claudeTodos",
-          "title": "Claude Todos",
+          "id": "codingSessionTodos",
+          "title": "Coding Session Todos",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "claudeTodos": [
+      "codingSessionTodos": [
         {
-          "id": "claudeTodos.list",
+          "id": "codingSessionTodos.list",
           "name": "Todos",
           "type": "tree"
         }
@@ -56,61 +64,65 @@
     },
     "viewsWelcome": [
       {
-        "view": "claudeTodos.list",
-        "contents": "No active Claude sessions found.\n\nSessions appear here once Claude Code touches a transcript in this workspace, or within the active session window (configurable via `claudeTodos.activeSessionMinutes`, default 30 minutes).\n\n[Refresh](command:claudeTodos.refresh)\n[Open Settings](command:claudeTodos.openSettings)",
-        "when": "claudeTodos.state == noSessions"
+        "view": "codingSessionTodos.list",
+        "contents": "No active Claude sessions found.\n\nSessions appear here once Claude Code touches a transcript in this workspace, or within the active session window (configurable via `codingSessionTodos.activeSessionMinutes`, default 30 minutes).\n\n[Refresh](command:codingSessionTodos.refresh)\n[Open Settings](command:codingSessionTodos.openSettings)",
+        "when": "codingSessionTodos.state == noSessions"
       }
     ],
     "commands": [
       {
-        "command": "claudeTodos.refresh",
-        "title": "Refresh Claude Todos",
+        "command": "codingSessionTodos.refresh",
+        "title": "Refresh",
+        "category": "Coding Session Todos",
         "icon": "$(refresh)"
       },
       {
-        "command": "claudeTodos.expandAll",
-        "title": "Expand All Claude Todos",
+        "command": "codingSessionTodos.expandAll",
+        "title": "Expand All",
+        "category": "Coding Session Todos",
         "icon": "$(expand-all)"
       },
       {
-        "command": "claudeTodos.collapseAll",
-        "title": "Collapse All Claude Todos",
+        "command": "codingSessionTodos.collapseAll",
+        "title": "Collapse All",
+        "category": "Coding Session Todos",
         "icon": "$(collapse-all)"
       },
       {
-        "command": "claudeTodos.openSettings",
-        "title": "Claude Todos Settings",
+        "command": "codingSessionTodos.openSettings",
+        "title": "Settings",
+        "category": "Coding Session Todos",
         "icon": "$(gear)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "claudeTodos.refresh",
-          "when": "view == claudeTodos.list",
+          "command": "codingSessionTodos.refresh",
+          "when": "view == codingSessionTodos.list",
           "group": "navigation@1"
         },
         {
-          "command": "claudeTodos.expandAll",
-          "when": "view == claudeTodos.list",
+          "command": "codingSessionTodos.expandAll",
+          "when": "view == codingSessionTodos.list",
           "group": "navigation@2"
         },
         {
-          "command": "claudeTodos.collapseAll",
-          "when": "view == claudeTodos.list",
+          "command": "codingSessionTodos.collapseAll",
+          "when": "view == codingSessionTodos.list",
           "group": "navigation@3"
         },
         {
-          "command": "claudeTodos.openSettings",
-          "when": "view == claudeTodos.list",
+          "command": "codingSessionTodos.openSettings",
+          "when": "view == codingSessionTodos.list",
           "group": "navigation@4"
         }
       ]
     },
     "configuration": {
-      "title": "Claude Todos",
+      "title": "Coding Session Todos",
       "properties": {
-        "claudeTodos.activeSessionMinutes": {
+        "codingSessionTodos.activeSessionMinutes": {
           "type": "number",
           "default": 30,
           "minimum": 5,

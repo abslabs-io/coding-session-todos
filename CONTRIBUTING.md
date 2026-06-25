@@ -1,13 +1,13 @@
-# Contributing to Claude Todos
+# Contributing to Coding Session Todos
 
-Thanks for your interest in improving Claude Todos! This is a small, dependency-free
+Thanks for your interest in improving Coding Session Todos! This is a small, dependency-free
 VS Code extension, so the contribution loop is quick.
 
 ## Development setup
 
 ```bash
-git clone https://github.com/abslabs-io/claude-todos.git
-cd claude-todos
+git clone https://github.com/abslabs-io/coding-session-todos.git
+cd coding-session-todos
 npm install        # also wires up the pre-commit hook (typecheck + lint + test)
 ```
 
@@ -15,7 +15,7 @@ npm install        # also wires up the pre-commit hook (typecheck + lint + test)
 
 Press `F5` in VS Code (or run **Debug: Start Debugging**) to launch an Extension
 Development Host with the extension loaded. Open a folder where you use Claude Code
-and look for the **Claude Todos** icon in the activity bar.
+and look for the **Coding Session Todos** icon in the activity bar.
 
 ## Scripts
 
@@ -51,5 +51,5 @@ and look for the **Claude Todos** icon in the activity bar.
 
 ## Reporting issues
 
-Use the [issue templates](https://github.com/abslabs-io/claude-todos/issues/new/choose).
+Use the [issue templates](https://github.com/abslabs-io/coding-session-todos/issues/new/choose).
 Include your VS Code version, OS, and what you expected vs. what happened.

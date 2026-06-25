@@ -1,4 +1,4 @@
-# Claude Todos
+# Coding Session Todos
 
 A VS Code sidebar that mirrors the live `TodoWrite` task list from your active
 [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions — so you can
@@ -8,14 +8,20 @@ It works entirely by tailing the transcript JSONL files Claude Code writes under
 `~/.claude/projects/`. Nothing is sent anywhere; there are no runtime
 dependencies and no configuration required to get started.
 
-<img src="media/screenshot-sidebar.png" alt="Claude Todos sidebar showing three live sessions, each with its todos, inferred state, and context usage" width="480">
+> **Claude Code only, for now.** Despite the agent-agnostic name, the extension
+> currently reads [Claude Code](https://docs.claude.com/en/docs/claude-code)
+> transcripts exclusively. Support for other coding agents may come later.
+
+<img src="media/screenshot-sidebar.png" alt="Coding Session Todos sidebar showing three live sessions, each with its todos, inferred state, and context usage" width="480">
 
 ## Features
 
 - **Live todo list** — the current `TodoWrite` snapshot for each active session,
   re-rendered as the transcript changes. The in-progress item is highlighted.
-- **Multi-session aware** — every Claude session touched within the active window
-  shows up, sorted most-recent-first, each with its own todos.
+- **Every window, one place** — sessions are read globally from
+  `~/.claude/projects/`, so a single panel shows every Claude Code session active
+  across _all_ your open VS Code windows and workspaces — not just this one —
+  sorted most-recent-first, each with its own todos.
 - **Session state at a glance** — a spinner while Claude is working, a warning
   when a session looks like it's waiting on you (e.g. a permission prompt), and a
   check when it's idle.
@@ -34,26 +40,26 @@ those files read-only; it does not run or control Claude Code.
 
 ## Installation
 
-From the VS Code Marketplace: search for **Claude Todos** in the Extensions view,
+From the VS Code Marketplace: search for **Coding Session Todos** in the Extensions view,
 or install from the command line:
 
 ```bash
-code --install-extension <publisher>.claude-todos
+code --install-extension <publisher>.coding-session-todos
 ```
 
 Or build and install a local `.vsix`:
 
 ```bash
 npm install
-npm run package          # produces claude-todos-<version>.vsix
-code --install-extension claude-todos-<version>.vsix
+npm run package          # produces coding-session-todos-<version>.vsix
+code --install-extension coding-session-todos-<version>.vsix
 ```
 
 ## Settings
 
-| Setting                            | Default | Description                                                                                                 |
-| ---------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
-| `claudeTodos.activeSessionMinutes` | `30`    | How recently a session must have been touched (in minutes) to appear in the panel. Min 5, max 1440 (1 day). |
+| Setting                                   | Default | Description                                                                                                 |
+| ----------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `codingSessionTodos.activeSessionMinutes` | `30`    | How recently a session must have been touched (in minutes) to appear in the panel. Min 5, max 1440 (1 day). |
 
 ## How it works
 

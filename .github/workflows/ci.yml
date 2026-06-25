@@ -30,9 +30,9 @@ jobs:
       - run: npm run build
 
       - name: Package extension
-        run: npx vsce package --out claude-todos.vsix
+        run: npx vsce package --out coding-session-todos.vsix
 
       - uses: actions/upload-artifact@v7
         with:
-          name: claude-todos-vsix
-          path: claude-todos.vsix
+          name: coding-session-todos-vsix
+          path: coding-session-todos.vsix

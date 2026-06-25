@@ -11,12 +11,12 @@
 // only if needed, then screenshot the sidebar + status bar.
 //
 // Standalone use: `node scripts/make-screenshot-fixture.js [fixtureRoot]`
-// (default /tmp/claude-todos-screenshot). It prints the HOME and folder to open.
+// (default /tmp/coding-session-todos-screenshot). It prints the HOME and folder to open.
 
 const fs = require("fs");
 const path = require("path");
 
-const FIX = process.argv[2] || "/tmp/claude-todos-screenshot";
+const FIX = process.argv[2] || "/tmp/coding-session-todos-screenshot";
 const PROJECTS = path.join(FIX, ".claude", "projects");
 const WORK = path.join(FIX, "work", "web-dashboard");
 
@@ -217,7 +217,7 @@ fs.writeFileSync(
 // user's global setting.
 fs.writeFileSync(
   path.join(WORK, ".vscode", "settings.json"),
-  JSON.stringify({ "claudeTodos.activeSessionMinutes": 60 }, null, 2) + "\n",
+  JSON.stringify({ "codingSessionTodos.activeSessionMinutes": 60 }, null, 2) + "\n",
 );
 
 console.log("Screenshot fixture written.");

@@ -39,12 +39,12 @@ const STATE_TICK_MS = 6_000;
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new TodosProvider();
-  const view = vscode.window.createTreeView<TreeNode>("claudeTodos.list", {
+  const view = vscode.window.createTreeView<TreeNode>("codingSessionTodos.list", {
     treeDataProvider: provider,
     showCollapseAll: false,
   });
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBar.command = "workbench.view.extension.claudeTodos";
+  statusBar.command = "workbench.view.extension.codingSessionTodos";
   // The widget is always visible; updateStatusBar only mutates its text/tooltip/bg.
   statusBar.show();
   provider.attachView(view, statusBar);
@@ -55,21 +55,23 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("claudeTodos.refresh", () => provider.refresh()),
+    vscode.commands.registerCommand("codingSessionTodos.refresh", () => provider.refresh()),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("claudeTodos.expandAll", () => provider.expandAll()),
+    vscode.commands.registerCommand("codingSessionTodos.expandAll", () => provider.expandAll()),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("claudeTodos.collapseAll", () =>
-      vscode.commands.executeCommand("workbench.actions.treeView.claudeTodos.list.collapseAll"),
+    vscode.commands.registerCommand("codingSessionTodos.collapseAll", () =>
+      vscode.commands.executeCommand(
+        "workbench.actions.treeView.codingSessionTodos.list.collapseAll",
+      ),
     ),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("claudeTodos.openSettings", () =>
+    vscode.commands.registerCommand("codingSessionTodos.openSettings", () =>
       vscode.commands.executeCommand(
         "workbench.action.openSettings",
         `@ext:${context.extension.id}`,
@@ -83,7 +85,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("claudeTodos.activeSessionMinutes")) {
+      if (event.affectsConfiguration("codingSessionTodos.activeSessionMinutes")) {
         void provider.refresh();
       }
     }),
@@ -125,7 +127,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
 
   getActiveWindowMs(): number {
     const raw = vscode.workspace
-      .getConfiguration("claudeTodos")
+      .getConfiguration("codingSessionTodos")
       .get<number>("activeSessionMinutes", DEFAULT_ACTIVE_WINDOW_MIN);
     const minutes = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_ACTIVE_WINDOW_MIN;
     return minutes * 60_000;
@@ -361,7 +363,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
   private updateChrome(): void {
     const state: ViewState = this.entries.length === 0 ? "noSessions" : "ready";
     if (state !== this.lastState) {
-      void vscode.commands.executeCommand("setContext", "claudeTodos.state", state);
+      void vscode.commands.executeCommand("setContext", "codingSessionTodos.state", state);
       this.lastState = state;
     }
     this.updateStatusBar();
