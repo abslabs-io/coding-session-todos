@@ -8,6 +8,18 @@
       "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
       "outFiles": ["${workspaceFolder}/out/**/*.js"],
       "preLaunchTask": "npm: build"
+    },
+    {
+      "name": "Extension: Screenshot Demo",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "/tmp/claude-todos-screenshot/work/web-dashboard"
+      ],
+      "env": { "HOME": "/tmp/claude-todos-screenshot" },
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "preLaunchTask": "screenshot: prep"
     }
   ]
 }

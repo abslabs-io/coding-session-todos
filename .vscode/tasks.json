@@ -16,6 +16,20 @@
       "isBackground": true,
       "problemMatcher": "$tsc-watch",
       "presentation": { "reveal": "silent" }
+    },
+    {
+      "type": "shell",
+      "command": "node",
+      "args": ["scripts/make-screenshot-fixture.js"],
+      "label": "screenshot: fixture",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "screenshot: prep",
+      "dependsOrder": "sequence",
+      "dependsOn": ["npm: build", "screenshot: fixture"],
+      "problemMatcher": []
     }
   ]
 }
