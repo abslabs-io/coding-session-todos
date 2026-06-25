@@ -121,6 +121,23 @@ describe("findProjectDir", () => {
     expect(await findProjectDir(cwd)).toBe(projectDir);
   });
 
+  test("matches the workspace by the transcript's latest cwd after a rename", async () => {
+    // A session that started under the old folder name, then the folder was
+    // renamed: later lines carry the new cwd. Matching must follow the latest.
+    const oldCwd = "/code/old-name";
+    const newCwd = "/code/new-name";
+    const dir = path.join(projectsRoot(), "renamed-project");
+    await writeJsonl(path.join(dir, "s.jsonl"), [
+      { cwd: oldCwd, type: "user" },
+      { cwd: oldCwd, type: "assistant" },
+      { cwd: newCwd, type: "user" },
+      { cwd: newCwd, type: "assistant" },
+    ]);
+    expect(await findProjectDir(newCwd)).toBe(dir);
+    // The old (now-gone) path must no longer resolve to the session.
+    expect(await findProjectDir(oldCwd)).toBeNull();
+  });
+
   test("returns null when no matching transcript dir exists", async () => {
     await fs.promises.mkdir(projectsRoot(), { recursive: true });
     expect(await findProjectDir("/nonexistent")).toBeNull();
@@ -190,5 +207,18 @@ describe("findActiveSessions", () => {
     await writeJsonl(headless, [{ type: "queue-operation" }, { type: "user" }]);
 
     expect(await findActiveSessions(60 * 60_000)).toEqual([]);
+  });
+
+  test("reports a session at its latest cwd, not the first (mid-session rename)", async () => {
+    const oldCwd = "/code/old-name";
+    const newCwd = "/code/new-name";
+    const dir = path.join(projectsRoot(), "some-project");
+    await writeJsonl(path.join(dir, "s.jsonl"), [
+      { cwd: oldCwd, type: "user" },
+      { cwd: newCwd, type: "user" },
+    ]);
+
+    const sessions = await findActiveSessions(60 * 60_000);
+    expect(sessions.map((s) => s.cwd)).toEqual([newCwd]);
   });
 });

@@ -42,40 +42,73 @@ async function latestJsonlIn(dir: string): Promise<string | null> {
   return best?.path ?? null;
 }
 
-// A transcript's cwd is written once at session start and never changes, so we
-// memoize it per path. Without this, findActiveSessions/findProjectDir re-read
-// the 64KB head of every transcript on every rescan and safety poll. Only
-// successful (string) lookups are cached; a miss — the head not yet flushed with
-// a cwd line — is left uncached so the next pass retries.
-const cwdCache = new Map<string, string>();
+// Claude Code records a cwd on each message line. It's usually constant, but it
+// CAN change mid-session — most notably when the project folder is renamed while
+// a session is open: the OS resolves the running process's cwd to the new path,
+// and subsequent lines record the new value. So we read the LATEST cwd (scanning
+// from the tail), not the first, so a session matches where it currently lives
+// rather than where it started. Cache is keyed on file size: a static (inactive)
+// transcript stays cached, while a growing (active) one re-reads, picking up a
+// cwd change without an extension reload. Misses are left uncached so the next
+// pass retries once the head/tail has flushed a cwd line.
+const cwdCache = new Map<string, { size: number; cwd: string }>();
 
-// Reads the head of a transcript file and returns the first cwd field
-// it finds. Early lines are often `queue-operation` metadata without a
-// cwd, so we scan up to maxLines forward.
-async function transcriptCwd(filePath: string, maxLines = 50): Promise<string | null> {
+// Scans JSONL text for a top-level string `cwd`. With fromEnd, walks lines in
+// reverse to return the most recent value; otherwise the first. Returns null if
+// no line parses a cwd.
+function scanForCwd(text: string, fromEnd: boolean): string | null {
+  const lines = text.split("\n");
+  for (let k = 0; k < lines.length; k++) {
+    const line = lines[fromEnd ? lines.length - 1 - k : k];
+    if (!line) continue;
+    try {
+      const obj = JSON.parse(line) as { cwd?: unknown };
+      if (typeof obj.cwd === "string") return obj.cwd;
+    } catch {
+      // partial / non-JSON line; keep scanning
+    }
+  }
+  return null;
+}
+
+// Returns the transcript's current cwd: the latest value within the tail window,
+// falling back to the earliest value in the head when the tail holds no parseable
+// cwd (e.g. the final message is a single line larger than the window). Caching:
+// see cwdCache above.
+async function transcriptCwd(filePath: string, windowBytes = 64 * 1024): Promise<string | null> {
+  let size: number;
+  try {
+    size = (await fs.promises.stat(filePath)).size;
+  } catch {
+    return null;
+  }
   const cached = cwdCache.get(filePath);
-  if (cached !== undefined) return cached;
+  if (cached && cached.size === size) return cached.cwd;
+
   const fh = await fs.promises.open(filePath, "r");
   try {
-    const buf = Buffer.alloc(64 * 1024);
-    const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
-    const text = buf.slice(0, bytesRead).toString("utf8");
-    const lines = text.split("\n");
-    const limit = Math.min(lines.length, maxLines);
-    for (let i = 0; i < limit; i++) {
-      const line = lines[i];
-      if (!line) continue;
-      try {
-        const obj = JSON.parse(line) as { cwd?: unknown };
-        if (typeof obj.cwd === "string") {
-          cwdCache.set(filePath, obj.cwd);
-          return obj.cwd;
-        }
-      } catch {
-        // partial / non-JSON line; keep going
-      }
+    // Tail window: holds the latest cwd unless the final line is enormous.
+    const start = Math.max(0, size - windowBytes);
+    const tailBuf = Buffer.alloc(size - start);
+    await fh.read(tailBuf, 0, tailBuf.length, start);
+    let tailText = tailBuf.toString("utf8");
+    if (start > 0) {
+      // Drop the partial first line so we never parse truncated JSON.
+      const nl = tailText.indexOf("\n");
+      tailText = nl >= 0 ? tailText.slice(nl + 1) : "";
     }
-    return null;
+    let cwd = scanForCwd(tailText, true);
+
+    // Fallback to the head's first cwd when the tail window held none, so a
+    // session is never dropped just because its last message is huge.
+    if (cwd === null && start > 0) {
+      const headBuf = Buffer.alloc(Math.min(windowBytes, size));
+      await fh.read(headBuf, 0, headBuf.length, 0);
+      cwd = scanForCwd(headBuf.toString("utf8"), false);
+    }
+
+    if (cwd !== null) cwdCache.set(filePath, { size, cwd });
+    return cwd;
   } finally {
     await fh.close();
   }
