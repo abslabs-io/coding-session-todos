@@ -1,7 +1,8 @@
 // Generates media/icon-128.png — the 128x128 Marketplace listing icon.
-// Dependency-free: renders a coral rounded-square "checklist" mark at 4x and
-// box-downsamples for anti-aliasing, then encodes a PNG with the built-in zlib.
-// Run with: npm run icon
+// Mirrors media/icon.svg (a checklist: first dot filled, the other two hollow,
+// third line shorter) in white on a black rounded square. Dependency-free:
+// renders the mark at 4x and box-downsamples for anti-aliasing, then encodes a
+// PNG with the built-in zlib. Run with: npm run icon
 const zlib = require("zlib");
 const fs = require("fs");
 const path = require("path");
@@ -10,17 +11,17 @@ const N = 128; // output size
 const S = 4; // supersample factor
 const R = N * S; // render size
 
-const CORAL = [217, 119, 87];
+const BLACK = [0, 0, 0];
 const WHITE = [255, 255, 255];
 
-// Buffer carries coral rgb everywhere with alpha as coverage, so straight-alpha
+// Buffer carries the bg rgb everywhere with alpha as coverage, so straight-alpha
 // box-averaging never darkens the rounded edges (transparent subpixels still
-// hold the coral rgb; only their alpha is zero).
+// hold the bg rgb; only their alpha is zero).
 const buf = Buffer.alloc(R * R * 4);
 for (let i = 0; i < R * R; i++) {
-  buf[i * 4] = CORAL[0];
-  buf[i * 4 + 1] = CORAL[1];
-  buf[i * 4 + 2] = CORAL[2];
+  buf[i * 4] = BLACK[0];
+  buf[i * 4 + 1] = BLACK[1];
+  buf[i * 4 + 2] = BLACK[2];
   buf[i * 4 + 3] = 0;
 }
 
@@ -51,25 +52,37 @@ function segDist(px, py, ax, ay, bx, by) {
   return Math.hypot(px - cx, py - cy);
 }
 
+// Geometry maps icon.svg's 24x24 space into the 128 canvas (scale 4.5, offset
+// 10) so the mark is centered. SVG circles are r=2 with stroke-width 2, so the
+// painted radius is 3 units (path + half stroke); the hollow ring's hole is the
+// path minus the half stroke (r=1 unit). Lines are stroke-width 2 (half 1 unit)
+// with round caps. Row 1's dot is filled; rows 2-3 are hollow, like the SVG.
+const SCALE = 4.5;
+const OFF = 10;
+const u = (v) => v * SCALE + OFF;
+
+const DOT_X = u(5);
+const DOT_OUTER = 3 * SCALE; // painted radius (r=2 + half stroke=1)
+const DOT_HOLE = 1 * SCALE; // ring inner radius (r=2 - half stroke=1)
+const LINE_X = u(10);
+const LINE_HW = 1 * SCALE; // line half-width (stroke-width 2 / 2)
+
 const rows = [
-  { cy: 36, lineEnd: 104 },
-  { cy: 64, lineEnd: 104 },
-  { cy: 92, lineEnd: 84 },
+  { cy: u(5), lineEnd: u(21), fill: true },
+  { cy: u(12), lineEnd: u(21), fill: false },
+  { cy: u(19), lineEnd: u(17), fill: false },
 ];
-const DOT_X = 34;
-const DOT_R = 8;
-const LINE_X = 50;
-const LINE_R = 6;
 
 for (let y = 0; y < R; y++) {
   for (let x = 0; x < R; x++) {
     const ux = (x + 0.5) / S; // back to N-space, pixel center
     const uy = (y + 0.5) / S;
     if (!insideRRect(ux, uy, 0, 0, N, N, 28)) continue;
-    set(x, y, CORAL, 255);
+    set(x, y, BLACK, 255);
     for (const row of rows) {
-      const inDot = Math.hypot(ux - DOT_X, uy - row.cy) <= DOT_R;
-      const inLine = segDist(ux, uy, LINE_X, row.cy, row.lineEnd, row.cy) <= LINE_R;
+      const dot = Math.hypot(ux - DOT_X, uy - row.cy);
+      const inDot = row.fill ? dot <= DOT_OUTER : dot <= DOT_OUTER && dot >= DOT_HOLE;
+      const inLine = segDist(ux, uy, LINE_X, row.cy, row.lineEnd, row.cy) <= LINE_HW;
       if (inDot || inLine) {
         set(x, y, WHITE, 255);
         break;
