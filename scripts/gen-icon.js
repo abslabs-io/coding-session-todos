@@ -1,8 +1,9 @@
 // Generates media/icon-128.png — the 128x128 Marketplace listing icon.
 // Mirrors media/icon.svg (a checklist: first dot filled, the other two hollow,
-// third line shorter) in white on a black rounded square. Dependency-free:
-// renders the mark at 4x and box-downsamples for anti-aliasing, then encodes a
-// PNG with the built-in zlib. Run with: npm run icon
+// third line shorter) in white on a rounded square with a diagonal violet→
+// fuchsia gradient (top-left → bottom-right). Dependency-free: renders the mark
+// at 4x and box-downsamples for anti-aliasing, then encodes a PNG with the
+// built-in zlib. Run with: npm run icon
 const zlib = require("zlib");
 const fs = require("fs");
 const path = require("path");
@@ -11,19 +12,26 @@ const N = 128; // output size
 const S = 4; // supersample factor
 const R = N * S; // render size
 
-const BLACK = [0, 0, 0];
+const GRAD_FROM = [109, 40, 217]; // violet (top-left)
+const GRAD_TO = [219, 39, 119]; // fuchsia (bottom-right)
 const WHITE = [255, 255, 255];
+
+// Diagonal gradient color at an N-space point: t runs 0 (top-left) → 1
+// (bottom-right) along x+y.
+function bgAt(ux, uy) {
+  const t = (ux + uy) / (2 * N);
+  return [
+    Math.round(GRAD_FROM[0] + (GRAD_TO[0] - GRAD_FROM[0]) * t),
+    Math.round(GRAD_FROM[1] + (GRAD_TO[1] - GRAD_FROM[1]) * t),
+    Math.round(GRAD_FROM[2] + (GRAD_TO[2] - GRAD_FROM[2]) * t),
+  ];
+}
 
 // Buffer carries the bg rgb everywhere with alpha as coverage, so straight-alpha
 // box-averaging never darkens the rounded edges (transparent subpixels still
-// hold the bg rgb; only their alpha is zero).
+// hold the bg rgb; only their alpha is zero). Filled per-pixel in the loop below
+// since the gradient varies across the canvas.
 const buf = Buffer.alloc(R * R * 4);
-for (let i = 0; i < R * R; i++) {
-  buf[i * 4] = BLACK[0];
-  buf[i * 4 + 1] = BLACK[1];
-  buf[i * 4 + 2] = BLACK[2];
-  buf[i * 4 + 3] = 0;
-}
 
 function set(x, y, c, a) {
   const i = (y * R + x) * 4;
@@ -52,33 +60,40 @@ function segDist(px, py, ax, ay, bx, by) {
   return Math.hypot(px - cx, py - cy);
 }
 
-// Geometry maps icon.svg's 24x24 space into the 128 canvas (scale 4.5, offset
-// 10) so the mark is centered. SVG circles are r=2 with stroke-width 2, so the
-// painted radius is 3 units (path + half stroke); the hollow ring's hole is the
-// path minus the half stroke (r=1 unit). Lines are stroke-width 2 (half 1 unit)
-// with round caps. Row 1's dot is filled; rows 2-3 are hollow, like the SVG.
-const SCALE = 4.5;
-const OFF = 10;
-const u = (v) => v * SCALE + OFF;
+// Geometry maps icon.svg's 24x24 space into the 128 canvas so the mark is
+// centered. SVG circles are r=2 with stroke-width 2, so the painted radius is 3
+// units (path + half stroke); the hollow ring's hole is the path minus the half
+// stroke (r=1 unit). Lines are stroke-width 2 (half 1 unit) with round caps.
+// Row 1's dot is filled; rows 2-3 are hollow, like the SVG. The mark's content
+// bbox in 24-space is ~x[2,21], y[2,22] (center 11.5, 12); we map that center to
+// the canvas center (64) per axis at SCALE 4.0, leaving a bit more padding than
+// before so the mark sits closer to the original's scale.
+const SCALE = 4.0;
+const OFFX = 64 - 11.5 * SCALE;
+const OFFY = 64 - 12 * SCALE;
+const ux_ = (v) => v * SCALE + OFFX; // x axis
+const uy_ = (v) => v * SCALE + OFFY; // y axis
 
-const DOT_X = u(5);
+const DOT_X = ux_(5);
 const DOT_OUTER = 3 * SCALE; // painted radius (r=2 + half stroke=1)
 const DOT_HOLE = 1 * SCALE; // ring inner radius (r=2 - half stroke=1)
-const LINE_X = u(10);
+const LINE_X = ux_(10);
 const LINE_HW = 1 * SCALE; // line half-width (stroke-width 2 / 2)
 
 const rows = [
-  { cy: u(5), lineEnd: u(21), fill: true },
-  { cy: u(12), lineEnd: u(21), fill: false },
-  { cy: u(19), lineEnd: u(17), fill: false },
+  { cy: uy_(5), lineEnd: ux_(21), fill: true },
+  { cy: uy_(12), lineEnd: ux_(21), fill: false },
+  { cy: uy_(19), lineEnd: ux_(17), fill: false },
 ];
 
 for (let y = 0; y < R; y++) {
   for (let x = 0; x < R; x++) {
     const ux = (x + 0.5) / S; // back to N-space, pixel center
     const uy = (y + 0.5) / S;
+    const bg = bgAt(ux, uy);
+    set(x, y, bg, 0); // carry gradient rgb into transparent edge subpixels
     if (!insideRRect(ux, uy, 0, 0, N, N, 28)) continue;
-    set(x, y, BLACK, 255);
+    set(x, y, bg, 255);
     for (const row of rows) {
       const dot = Math.hypot(ux - DOT_X, uy - row.cy);
       const inDot = row.fill ? dot <= DOT_OUTER : dot <= DOT_OUTER && dot >= DOT_HOLE;
