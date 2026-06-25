@@ -3,6 +3,12 @@
 All notable changes to the Coding Session Todos extension are documented here. This
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.0]
+
+- Restyled the Marketplace icon: the white checklist now sits on a diagonal
+  violet→fuchsia gradient (replacing the black background) and is scaled down
+  slightly for more padding around the rounded square.
+
 ## [0.0.17]
 
 - Fixed sessions being matched to the directory they _started_ in: the extension

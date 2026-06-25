@@ -2,7 +2,7 @@
   "name": "coding-session-todos",
   "displayName": "Coding Session Todos",
   "description": "Live sidebar view of your Claude Code sessions — todos, state, and context usage — across all your open windows.",
-  "version": "0.0.17",
+  "version": "0.1.0",
   "publisher": "abslabs",
   "license": "MIT",
   "author": "Abhishek Kapadiya",
