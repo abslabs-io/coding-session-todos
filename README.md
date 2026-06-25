@@ -8,6 +8,8 @@ It works entirely by tailing the transcript JSONL files Claude Code writes under
 `~/.claude/projects/`. Nothing is sent anywhere; there are no runtime
 dependencies and no configuration required to get started.
 
+<img src="media/screenshot-sidebar.png" alt="Claude Todos sidebar showing three live sessions, each with its todos, inferred state, and context usage" width="480">
+
 ## Features
 
 - **Live todo list** — the current `TodoWrite` snapshot for each active session,
@@ -21,6 +23,8 @@ dependencies and no configuration required to get started.
   shown per session and in the status bar (matches Claude Code's `/context`).
 - **Status-bar widget** — a compact `current/total · NN%` readout for the session
   running in your current workspace, with a tooltip listing every active session.
+
+<img src="media/screenshot-statusbar.png" alt="Status-bar widget with its tooltip listing every active Claude session" width="460">
 
 ## Requirements
 
