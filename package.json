@@ -3,7 +3,7 @@
   "displayName": "Coding Session Todos",
   "description": "Live sidebar view of your Claude Code sessions — todos, state, and context usage — across all your open windows.",
   "version": "0.0.15",
-  "publisher": "local",
+  "publisher": "abslabs",
   "license": "MIT",
   "author": "Abhishek Kapadiya",
   "icon": "media/icon-128.png",

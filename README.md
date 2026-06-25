@@ -44,7 +44,7 @@ From the VS Code Marketplace: search for **Coding Session Todos** in the Extensi
 or install from the command line:
 
 ```bash
-code --install-extension <publisher>.coding-session-todos
+code --install-extension abslabs.coding-session-todos
 ```
 
 Or build and install a local `.vsix`:
