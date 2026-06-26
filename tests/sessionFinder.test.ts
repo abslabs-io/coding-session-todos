@@ -221,4 +221,31 @@ describe("findActiveSessions", () => {
     const sessions = await findActiveSessions(60 * 60_000);
     expect(sessions.map((s) => s.cwd)).toEqual([newCwd]);
   });
+
+  test("ignores transient scratchpad (temp-dir) cwd excursions", async () => {
+    // The agent harness records short cwd excursions into a scratchpad under the
+    // OS temp dir; reading the literal latest cwd would latch onto it and the
+    // session would stop matching its workspace. The workspace cwd must win.
+    const workspace = "/code/app";
+    const scratchpad = path.join(os.tmpdir(), "claude", "sess-1", "scratchpad");
+    const dir = path.join(projectsRoot(), "app-project");
+    await writeJsonl(path.join(dir, "s.jsonl"), [
+      { cwd: workspace, type: "user" },
+      { cwd: workspace, type: "assistant" },
+      { cwd: scratchpad, type: "user" }, // excursion is the literal latest line
+    ]);
+
+    const sessions = await findActiveSessions(60 * 60_000);
+    expect(sessions.map((s) => s.cwd)).toEqual([workspace]);
+    // And it must still resolve to its project dir for the single-session path.
+    expect(await findProjectDir(workspace)).toBe(dir);
+  });
+
+  test("skips a transcript whose only cwd values are temp-dir excursions", async () => {
+    const scratchpad = path.join(os.tmpdir(), "claude", "sess-2", "scratchpad");
+    const dir = path.join(projectsRoot(), "temp-only");
+    await writeJsonl(path.join(dir, "s.jsonl"), [{ cwd: scratchpad, type: "user" }]);
+
+    expect(await findActiveSessions(60 * 60_000)).toEqual([]);
+  });
 });

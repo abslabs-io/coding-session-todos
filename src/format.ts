@@ -12,10 +12,9 @@ export interface SessionEntry {
 }
 
 // True when `cwd` is the workspace `root` itself or a directory nested under
-// it. Drives which session the status bar reflects: prefer the session sitting
-// exactly at the workspace folder, else the most recent one running inside it
-// (e.g. a Claude session started in a subdirectory). Cross-drive or sibling
-// paths (relative path escapes with "..") are outside the workspace.
+// it — the per-folder membership test `selectWindowSession` runs against each
+// open workspace folder. Cross-drive or sibling paths (relative path escapes
+// with "..") are outside the workspace.
 export function isWithinWorkspace(cwd: string, root: string): boolean {
   if (!root || !cwd) return false;
   // "" means the same directory; a ".."-leading or absolute relative path means
@@ -24,19 +23,25 @@ export function isWithinWorkspace(cwd: string, root: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-// Picks the session the status bar reflects: the one sitting exactly at the
-// workspace `root`, else the most recently active session running inside it.
-// Returns null when no session is within the workspace (the caller then shows
-// just the neutral icon). `entries` is assumed sorted most-recent-first — the
-// order the provider maintains — so `find` returns the latest match.
-export function selectStatusBarSession(
-  entries: SessionEntry[],
-  root: string | null,
-): SessionEntry | null {
-  if (!root) return null;
+// Picks the session this window's chrome (status bar + view title) reflects,
+// based on the window's workspace shape — the full set of folders VSCode has
+// open, not just the first one:
+//   - One or more folders open: prefer a session sitting exactly at one of those
+//     folders ("the selected session"), else the most recently active session
+//     running inside any of them. Sessions outside every folder (unrelated
+//     siblings, parents) never drive the chrome — they only appear in the
+//     tooltip — so `null` is returned and the caller shows just the neutral icon.
+//   - No folder open (an empty or single-file window): there is no workspace to
+//     scope to, so reflect the most recently active session anywhere. `null`
+//     only when no session is active at all.
+// `roots` is the list of workspace-folder paths (empty for a no-folder window).
+// `entries` is assumed sorted most-recent-first — the order the provider keeps —
+// so `find`/`[0]` return the latest match.
+export function selectWindowSession(entries: SessionEntry[], roots: string[]): SessionEntry | null {
+  if (roots.length === 0) return entries[0] ?? null;
   return (
-    entries.find((e) => e.session.cwd === root) ??
-    entries.find((e) => isWithinWorkspace(e.session.cwd, root)) ??
+    entries.find((e) => roots.includes(e.session.cwd)) ??
+    entries.find((e) => roots.some((root) => isWithinWorkspace(e.session.cwd, root))) ??
     null
   );
 }

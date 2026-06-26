@@ -53,9 +53,21 @@ async function latestJsonlIn(dir: string): Promise<string | null> {
 // pass retries once the head/tail has flushed a cwd line.
 const cwdCache = new Map<string, { size: number; cwd: string }>();
 
-// Scans JSONL text for a top-level string `cwd`. With fromEnd, walks lines in
-// reverse to return the most recent value; otherwise the first. Returns null if
-// no line parses a cwd.
+// True when `cwd` sits inside the OS temp dir. The agent harness records
+// transient cwd excursions into an ephemeral scratchpad under os.tmpdir()
+// (e.g. /tmp/.../scratchpad); those are never the session's workspace folder.
+// Skipping them keeps "latest cwd" from latching onto a scratchpad excursion and
+// collapsing the status bar to a bare icon mid-session. A real workspace under
+// the temp dir is vanishingly rare, so excluding the whole subtree is safe.
+function isTempCwd(cwd: string): boolean {
+  const tmp = os.tmpdir();
+  return cwd === tmp || cwd.startsWith(tmp + path.sep);
+}
+
+// Scans JSONL text for a top-level string `cwd`, ignoring temp-dir excursions
+// (see isTempCwd). With fromEnd, walks lines in reverse to return the most recent
+// qualifying value; otherwise the first. Returns null if no line parses a
+// non-temp cwd.
 function scanForCwd(text: string, fromEnd: boolean): string | null {
   const lines = text.split("\n");
   for (let k = 0; k < lines.length; k++) {
@@ -63,7 +75,7 @@ function scanForCwd(text: string, fromEnd: boolean): string | null {
     if (!line) continue;
     try {
       const obj = JSON.parse(line) as { cwd?: unknown };
-      if (typeof obj.cwd === "string") return obj.cwd;
+      if (typeof obj.cwd === "string" && !isTempCwd(obj.cwd)) return obj.cwd;
     } catch {
       // partial / non-JSON line; keep scanning
     }

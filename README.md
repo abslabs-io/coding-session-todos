@@ -57,9 +57,9 @@ code --install-extension coding-session-todos-<version>.vsix
 
 ## Settings
 
-| Setting                                   | Default | Description                                                                                                 |
-| ----------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
-| `codingSessionTodos.activeSessionMinutes` | `30`    | How recently a session must have been touched (in minutes) to appear in the panel. Min 5, max 1440 (1 day). |
+| Setting                                   | Default | Description                                                                                                                        |
+| ----------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `codingSessionTodos.activeSessionMinutes` | `300`   | How recently a session must have been touched (in minutes) to appear in the panel. Default 300 (5 hours). Min 5, max 1440 (1 day). |
 
 ## How it works
 

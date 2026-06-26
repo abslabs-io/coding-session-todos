@@ -23,12 +23,12 @@ import {
   sameEntries,
   sameState,
   sameTodos,
-  selectStatusBarSession,
+  selectWindowSession,
   SessionEntry,
   timeAgoMs,
 } from "./format";
 
-const DEFAULT_ACTIVE_WINDOW_MIN = 30;
+const DEFAULT_ACTIVE_WINDOW_MIN = 300;
 const REFRESH_THROTTLE_MS = 5_000;
 const RESCAN_DEBOUNCE_MS = 500;
 const SAFETY_POLL_MS = 60_000;
@@ -107,7 +107,9 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
 
   private view: vscode.TreeView<TreeNode> | null = null;
   private statusBar: vscode.StatusBarItem | null = null;
-  private currentCwd: string | null = null;
+  // Every folder open in this window, not just the first — multi-root and
+  // single-file windows both broke under a workspaceFolders[0]-only assumption.
+  private currentRoots: string[] = [];
   private entries: SessionEntry[] = [];
   private fileWatchers: Map<string, fs.FSWatcher> = new Map();
   private dirWatchers: Map<string, fs.FSWatcher> = new Map();
@@ -135,7 +137,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
 
   async relocate(): Promise<void> {
     this.disposeWatchers();
-    this.currentCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+    this.currentRoots = vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [];
     this.ensureRootWatcher();
     this.ensureSafetyPoll();
     await this.rescan();
@@ -366,10 +368,12 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
       void vscode.commands.executeCommand("setContext", "codingSessionTodos.state", state);
       this.lastState = state;
     }
-    this.updateStatusBar();
+    // The session this window reflects (status bar + title) — shape-aware so
+    // multi-root and single-file windows resolve correctly.
+    const current = selectWindowSession(this.entries, this.currentRoots);
+    this.updateStatusBar(current);
     if (!this.view) return;
 
-    const current = this.entries.find((e) => e.session.cwd === this.currentCwd);
     const todos = current?.snapshot?.todos ?? [];
     let nextTitle = "Todos";
     let nextBadgeValue: number | undefined;
@@ -396,12 +400,11 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
     this.view.message = undefined;
   }
 
-  private updateStatusBar(): void {
+  private updateStatusBar(current: SessionEntry | null): void {
     if (!this.statusBar) return;
-    // Sessions outside this window's workspace never drive the widget — only
-    // the tooltip below lists them.
-    const current = selectStatusBarSession(this.entries, this.currentCwd);
-
+    // `current` is the window's session (selectWindowSession); when null, no
+    // session is relevant to this window and we show just the neutral icon. The
+    // tooltip below still enumerates every active session regardless.
     let bgId: string | undefined;
     let text: string;
     if (current) {
@@ -466,7 +469,7 @@ class TodosProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   getTreeItem(node: TreeNode): vscode.TreeItem {
-    return node.toTreeItem(this.currentCwd);
+    return node.toTreeItem(this.currentRoots);
   }
 
   getChildren(node?: TreeNode): TreeNode[] {
@@ -547,8 +550,8 @@ async function loadEntry(
 class SessionNode {
   constructor(public readonly entry: SessionEntry) {}
 
-  toTreeItem(currentCwd: string | null): vscode.TreeItem {
-    const isCurrent = this.entry.session.cwd === currentCwd;
+  toTreeItem(currentRoots: string[]): vscode.TreeItem {
+    const isCurrent = currentRoots.includes(this.entry.session.cwd);
     const folder = path.basename(this.entry.session.cwd) || this.entry.session.cwd;
     const labelText = this.entry.title ?? folder;
     const item = new vscode.TreeItem(labelText, vscode.TreeItemCollapsibleState.Expanded);
@@ -568,7 +571,7 @@ class SessionNode {
 class InfoNode {
   constructor(public readonly entry: SessionEntry) {}
 
-  toTreeItem(_currentCwd: string | null): vscode.TreeItem {
+  toTreeItem(_currentRoots: string[]): vscode.TreeItem {
     const todos = this.entry.snapshot?.todos ?? [];
     const folder = path.basename(this.entry.session.cwd) || this.entry.session.cwd;
     const ago =
@@ -601,7 +604,7 @@ class TodoNode {
     private readonly index: number,
   ) {}
 
-  toTreeItem(_currentCwd: string | null): vscode.TreeItem {
+  toTreeItem(_currentRoots: string[]): vscode.TreeItem {
     const { status, content, activeForm } = this.todo;
     let label = content;
     let description: string | undefined;

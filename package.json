@@ -2,7 +2,7 @@
   "name": "coding-session-todos",
   "displayName": "Coding Session Todos",
   "description": "Live sidebar view of your Claude Code sessions — todos, state, and context usage — across all your open windows.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "abslabs",
   "license": "MIT",
   "author": "Abhishek Kapadiya",
@@ -65,7 +65,7 @@
     "viewsWelcome": [
       {
         "view": "codingSessionTodos.list",
-        "contents": "No active Claude sessions found.\n\nSessions appear here once Claude Code touches a transcript in this workspace, or within the active session window (configurable via `codingSessionTodos.activeSessionMinutes`, default 30 minutes).\n\n[Refresh](command:codingSessionTodos.refresh)\n[Open Settings](command:codingSessionTodos.openSettings)",
+        "contents": "No active Claude sessions found.\n\nSessions appear here once Claude Code touches a transcript in this workspace, or within the active session window (configurable via `codingSessionTodos.activeSessionMinutes`, default 5 hours).\n\n[Refresh](command:codingSessionTodos.refresh)\n[Open Settings](command:codingSessionTodos.openSettings)",
         "when": "codingSessionTodos.state == noSessions"
       }
     ],
@@ -124,10 +124,10 @@
       "properties": {
         "codingSessionTodos.activeSessionMinutes": {
           "type": "number",
-          "default": 30,
+          "default": 300,
           "minimum": 5,
           "maximum": 1440,
-          "description": "How recently a Claude session must have been touched (in minutes) to appear in the panel. Default 30, max 1 day."
+          "description": "How recently a Claude session must have been touched (in minutes) to appear in the panel. Default 300 (5 hours), max 1 day."
         }
       }
     }

@@ -3,6 +3,20 @@
 All notable changes to the Coding Session Todos extension are documented here. This
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.1]
+
+- Fixed the status bar intermittently collapsing to a bare icon while a session
+  was clearly running. Reading the **latest** `cwd` (added in 0.0.17) also picked
+  up transient excursions into the agent's scratchpad under the OS temp dir, which
+  no longer matched the workspace; cwd values inside `os.tmpdir()` are now skipped,
+  so a mid-session folder rename is still followed but a scratchpad detour is not.
+- Made status-bar/title session selection workspace-shape-aware: it now considers
+  **every** folder open in the window (not just the first), so multi-root
+  workspaces resolve correctly, and an empty/single-file window reflects the most
+  recently active session instead of showing nothing.
+- Changed the default for `codingSessionTodos.activeSessionMinutes` from 30 to
+  **300 (5 hours)**.
+
 ## [0.1.0]
 
 - Restyled the Marketplace icon: the white checklist now sits on a diagonal

@@ -10,7 +10,7 @@ import {
   sameEntries,
   sameState,
   sameTodos,
-  selectStatusBarSession,
+  selectWindowSession,
   timeAgoMs,
   windowForModel,
   type SessionEntry,
@@ -98,7 +98,7 @@ describe("isWithinWorkspace", () => {
   });
 });
 
-describe("selectStatusBarSession", () => {
+describe("selectWindowSession", () => {
   function entry(file: string, cwd: string, mtimeMs: number): SessionEntry {
     return {
       session: { sessionFile: file, cwd, mtimeMs },
@@ -111,19 +111,14 @@ describe("selectStatusBarSession", () => {
 
   const ROOT = "/code/app";
 
-  test("returns null when there is no workspace root", () => {
-    const entries = [entry("a", ROOT, 3)];
-    expect(selectStatusBarSession(entries, null)).toBeNull();
-  });
-
-  test("returns null when there are no sessions", () => {
-    expect(selectStatusBarSession([], ROOT)).toBeNull();
+  test("returns null when there are no sessions at all", () => {
+    expect(selectWindowSession([], [ROOT])).toBeNull();
+    expect(selectWindowSession([], [])).toBeNull();
   });
 
   test("prefers the exact workspace-cwd session", () => {
     const exact = entry("exact", ROOT, 5);
-    const entries = [exact];
-    expect(selectStatusBarSession(entries, ROOT)).toBe(exact);
+    expect(selectWindowSession([exact], [ROOT])).toBe(exact);
   });
 
   test("prefers the exact match even when a nested session is more recent", () => {
@@ -131,30 +126,54 @@ describe("selectStatusBarSession", () => {
     // is newer, but the session sitting exactly at the workspace wins.
     const nested = entry("nested", "/code/app/sub", 9);
     const exact = entry("exact", ROOT, 2);
-    const entries = [nested, exact];
-    expect(selectStatusBarSession(entries, ROOT)).toBe(exact);
+    expect(selectWindowSession([nested, exact], [ROOT])).toBe(exact);
   });
 
   test("falls back to the most recent session within the workspace", () => {
     // No exact match; the first within-workspace entry wins (newest first).
     const newerSub = entry("newer", "/code/app/api", 9);
     const olderSub = entry("older", "/code/app/web", 4);
-    const entries = [newerSub, olderSub];
-    expect(selectStatusBarSession(entries, ROOT)).toBe(newerSub);
+    expect(selectWindowSession([newerSub, olderSub], [ROOT])).toBe(newerSub);
   });
 
-  test("ignores sessions outside the workspace entirely", () => {
+  test("ignores sessions outside the workspace when a folder is open", () => {
     const sibling = entry("sibling", "/code/app2", 9);
     const other = entry("other", "/elsewhere", 8);
-    const entries = [sibling, other];
-    expect(selectStatusBarSession(entries, ROOT)).toBeNull();
+    expect(selectWindowSession([sibling, other], [ROOT])).toBeNull();
   });
 
   test("picks the in-workspace session when out-of-workspace sessions are more recent", () => {
     const recentOutsider = entry("outsider", "/elsewhere", 9);
     const inside = entry("inside", "/code/app/pkg", 3);
-    const entries = [recentOutsider, inside];
-    expect(selectStatusBarSession(entries, ROOT)).toBe(inside);
+    expect(selectWindowSession([recentOutsider, inside], [ROOT])).toBe(inside);
+  });
+
+  test("multi-root: matches a session sitting at the second workspace folder", () => {
+    // The single-folder assumption (workspaceFolders[0]) used to miss this.
+    const inSecond = entry("second", "/code/api", 9);
+    const roots = ["/code/app", "/code/api"];
+    expect(selectWindowSession([inSecond], roots)).toBe(inSecond);
+  });
+
+  test("multi-root: matches a session nested inside any workspace folder", () => {
+    const nested = entry("nested", "/code/api/pkg", 7);
+    const roots = ["/code/app", "/code/api"];
+    expect(selectWindowSession([nested], roots)).toBe(nested);
+  });
+
+  test("multi-root: an exact root match beats a nested match in another root", () => {
+    const nestedNewer = entry("nested", "/code/app/sub", 9);
+    const exactSecond = entry("exact", "/code/api", 3);
+    const roots = ["/code/app", "/code/api"];
+    expect(selectWindowSession([nestedNewer, exactSecond], roots)).toBe(exactSecond);
+  });
+
+  test("no folder open: reflects the most recent active session anywhere", () => {
+    // An empty/single-file window has no workspace to scope to, so the widget
+    // shows the most recently active session rather than collapsing to an icon.
+    const newest = entry("newest", "/elsewhere", 9);
+    const older = entry("older", "/code/app", 4);
+    expect(selectWindowSession([newest, older], [])).toBe(newest);
   });
 });
 
